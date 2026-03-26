@@ -1,0 +1,269 @@
+/* ── GenDoc custom styles ─────────────────────────────────────────── */
+
+:root {
+  --gd-primary: #4f46e5;
+  --gd-primary-hover: #4338ca;
+  --gd-surface: #ffffff;
+  --gd-bg: #f5f5f7;
+  --gd-border: #e2e2e7;
+  --gd-text: #1d1d1f;
+  --gd-muted: #6e6e73;
+  --gd-radius: 10px;
+  --gd-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Base */
+body {
+  background: var(--gd-bg);
+  color: var(--gd-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* Card wrapper */
+.gd-card {
+  background: var(--gd-surface);
+  border: 1px solid var(--gd-border);
+  border-radius: var(--gd-radius);
+  box-shadow: var(--gd-shadow);
+  padding: 2rem 2.25rem;
+}
+
+/* Header */
+.gd-header {
+  border-bottom: 1px solid var(--gd-border);
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.gd-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--gd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.gd-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--gd-text);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.gd-subtitle {
+  font-size: 0.82rem;
+  color: var(--gd-muted);
+  margin: 0;
+}
+
+/* Section labels */
+.gd-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--gd-muted);
+  margin-bottom: 0.45rem;
+}
+
+/* Path inputs */
+.gd-path-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.gd-path-input {
+  flex: 1;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  color: var(--gd-text);
+  background: #fafafa;
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+
+.gd-path-input:focus {
+  border-color: var(--gd-primary);
+  background: #fff;
+}
+
+.gd-path-input::placeholder {
+  color: #b0b0b8;
+}
+
+/* Buttons */
+.btn-browse {
+  flex-shrink: 0;
+  background: #f0eff5;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--gd-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-browse:hover {
+  background: #e8e7f0;
+  border-color: #c8c7d4;
+}
+
+.btn-generate {
+  width: 100%;
+  background: var(--gd-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
+}
+
+.btn-generate:hover:not(:disabled) {
+  background: var(--gd-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-generate:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-generate:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Optional badge */
+.badge-optional {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  background: #f0f0f5;
+  color: var(--gd-muted);
+  border: 1px solid var(--gd-border);
+  vertical-align: middle;
+  margin-left: 0.35rem;
+}
+
+/* Divider */
+.gd-divider {
+  border: none;
+  border-top: 1px solid var(--gd-border);
+  margin: 1.5rem 0;
+}
+
+/* Log area */
+.gd-log {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 8px;
+  border: 1px solid #2e2e3e;
+  padding: 0.9rem 1rem;
+  font-family: "Cascadia Code", "Fira Mono", "Consolas", monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  resize: vertical;
+  width: 100%;
+  min-height: 120px;
+  outline: none;
+}
+
+/* Progress bar */
+.gd-progress-wrap {
+  background: #e8e8ed;
+  border-radius: 99px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.gd-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--gd-primary), #7c3aed);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* Output indicator */
+.gd-output-box {
+  background: #f7f7fa;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--gd-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.4rem;
+}
+
+.gd-output-box .output-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.gd-output-path {
+  font-family: "Cascadia Code", "Fira Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--gd-text);
+  word-break: break-all;
+}
+
+/* Status dot */
+.gd-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d1d6;
+  display: inline-block;
+  margin-right: 0.35rem;
+  transition: background 0.3s;
+}
+
+.gd-status-dot.running {
+  background: #f59e0b;
+  animation: pulse 1.2s infinite;
+}
+
+.gd-status-dot.done {
+  background: #22c55e;
+}
+
+.gd-status-dot.error {
+  background: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* Responsive tweaks */
+@media (max-width: 540px) {
+  .gd-card {
+    padding: 1.25rem 1rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
