@@ -1,0 +1,31 @@
+# Normalize line endings for all text files
+* text=auto
+
+# Force LF for source and config files
+*.py    text eol=lf
+*.js    text eol=lf
+*.ts    text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.scss  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.sh    text eol=lf
+
+# Dotfiles
+.env.example  text eol=lf
+.gitignore    text eol=lf
+.gitattributes text eol=lf
+
+# Binaries — no line-ending conversion
+*.docx  binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.pdf   binary

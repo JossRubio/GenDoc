@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GenDoc — Generador de Documentación</title>
 
+  <!-- Apply saved theme before first paint to avoid flash -->
+  <script>
+    (function() {
+      var t = localStorage.getItem("gd-theme") || "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+
   <!-- Bootstrap 5 (layout + reset only, we override visuals) -->
   <link
     rel="stylesheet"
@@ -28,6 +36,17 @@
         <div>
           <h1 class="gd-title">GenDoc</h1>
           <p class="gd-subtitle">Generador automático de documentación para repositorios</p>
+        </div>
+
+        <!-- Theme toggle -->
+        <div class="gd-theme-toggle" title="Cambiar tema">
+          <span class="gd-theme-icon icon-sun" aria-hidden="true">☀️</span>
+          <label class="gd-switch" aria-label="Activar modo oscuro">
+            <input type="checkbox" id="themeToggle" />
+            <div class="gd-switch-track"></div>
+            <div class="gd-switch-thumb"></div>
+          </label>
+          <span class="gd-theme-icon icon-moon" aria-hidden="true">🌙</span>
         </div>
       </div>
 

@@ -3,8 +3,12 @@ services.py — Business logic layer.
 All future document generation, analysis, and AI calls go here.
 """
 
+import os
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog
+
+from .repo_reader import scan
 
 
 def _get_tk_root():
@@ -39,13 +43,48 @@ def browse_file() -> str | None:
     return path or None
 
 
-def generate_documentation(repo_path: str = None, template_path: str = None) -> dict:
+def generate_documentation(repo_path: str, template_path: str | None = None) -> dict:
     """
-    Placeholder — will analyse the repository and produce a Word document.
-    Returns a dict with keys: message, output_path, steps (list of log lines).
+    Phase 1: scan the repository and report found files.
+    Returns a dict with keys: steps (list[str]), output_path (str | None), error (str | None).
     """
-    return {
-        "message": "Funcionalidad pendiente de implementar",
-        "output_path": None,
-        "steps": ["Funcionalidad pendiente de implementar"],
-    }
+    steps: list[str] = []
+
+    # ── 1. Validate path ─────────────────────────────────────────────
+    if not repo_path:
+        return {"steps": ["Error: no se especificó ningún repositorio."], "error": "no_path"}
+
+    steps.append(f"Analizando repositorio: {repo_path}")
+
+    # ── 2. Scan ──────────────────────────────────────────────────────
+    try:
+        result = scan(repo_path)
+    except ValueError as exc:
+        steps.append(f"Error: {exc}")
+        return {"steps": steps, "error": str(exc)}
+
+    # ── 3. Build log lines ───────────────────────────────────────────
+    if result.total_files == 0:
+        steps.append("No se encontraron archivos de código fuente en el repositorio.")
+        return {"steps": steps, "output_path": None}
+
+    steps.append(f"Archivos encontrados ({result.total_files}):")
+    for f in result.files:
+        steps.append(f"  → {f.relative_path}  ({f.extension})")
+
+    size_kb = result.total_bytes / 1024
+    steps.append(
+        f"Total: {result.total_files} archivo{'s' if result.total_files != 1 else ''}"
+        f" | {size_kb:.1f} KB de código fuente"
+    )
+
+    if template_path:
+        steps.append(f"Plantilla seleccionada: {template_path}")
+
+    steps.append("Repositorio analizado. Listo para generar documentación.")
+
+    # ── 4. Resolve output path ───────────────────────────────────────
+    output_dir = os.getenv("OUTPUT_DIR") or repo_path
+    output_path = str(Path(output_dir) / "documentacion.docx")
+
+    return {"steps": steps, "output_path": output_path, "error": None}

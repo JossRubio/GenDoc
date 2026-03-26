@@ -1,5 +1,18 @@
 /* ── GenDoc frontend logic ─────────────────────────────────────────── */
 
+// ── Theme ────────────────────────────────────────────────────────────
+
+(function initTheme() {
+  const saved = localStorage.getItem("gd-theme") ?? "light";
+  document.documentElement.setAttribute("data-theme", saved);
+  // Sync checkbox after DOM is ready
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("themeToggle").checked = saved === "dark";
+  });
+})();
+
+// ── UI refs ──────────────────────────────────────────────────────────
+
 const ui = {
   repoInput:      document.getElementById("repoPath"),
   templateInput:  document.getElementById("templatePath"),
@@ -8,6 +21,7 @@ const ui = {
   btnGenerate:    document.getElementById("btnGenerate"),
   logArea:        document.getElementById("logArea"),
   progressBar:    document.getElementById("progressBar"),
+  themeToggle:    document.getElementById("themeToggle"),
   progressWrap:   document.getElementById("progressWrap"),
   outputPath:     document.getElementById("outputPath"),
   statusDot:      document.getElementById("statusDot"),
@@ -161,6 +175,12 @@ async function generate() {
 ui.btnBrowseRepo.addEventListener("click", browseFolder);
 ui.btnBrowseTpl.addEventListener("click", browseFile);
 ui.btnGenerate.addEventListener("click", generate);
+
+ui.themeToggle.addEventListener("change", () => {
+  const theme = ui.themeToggle.checked ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("gd-theme", theme);
+});
 
 // Allow typing the repo path directly
 ui.repoInput.addEventListener("input", () => {
