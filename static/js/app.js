@@ -23,7 +23,8 @@ const ui = {
   progressBar:    document.getElementById("progressBar"),
   themeToggle:    document.getElementById("themeToggle"),
   progressWrap:   document.getElementById("progressWrap"),
-  outputPath:     document.getElementById("outputPath"),
+  btnDownload:    document.getElementById("btnDownload"),
+  btnDownloadLabel: document.getElementById("btnDownloadLabel"),
   statusDot:      document.getElementById("statusDot"),
   statusText:     document.getElementById("statusText"),
 };
@@ -63,16 +64,19 @@ function setStatus(state) {
   ui.statusText.textContent = labels[state] ?? "Listo";
 }
 
-function updateOutputIndicator(repoPath) {
+function repoName(repoPath) {
+  return repoPath.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || "repositorio";
+}
+
+function updateDownloadButton(repoPath, enabled = false) {
   if (!repoPath) {
-    ui.outputPath.innerHTML =
-      '<span style="color:#b0b0b8">Se mostrará cuando selecciones un repositorio</span>';
+    ui.btnDownloadLabel.textContent = "Descargar documentación";
+    ui.btnDownload.disabled = true;
     return;
   }
-  const sep = repoPath.includes("/") ? "/" : "\\";
-  const docPath = repoPath.replace(/[/\\]+$/, "") + sep + "documentacion.docx";
-  ui.outputPath.innerHTML =
-    `<span class="output-icon">📄</span><span class="gd-output-path">${docPath}</span>`;
+  const filename = `${repoName(repoPath)}_documentacion.docx`;
+  ui.btnDownloadLabel.textContent = `Descargar ${filename}`;
+  ui.btnDownload.disabled = !enabled;
 }
 
 function setButtonState(enabled) {
@@ -87,7 +91,7 @@ async function browseFolder() {
     const data = await resp.json();
     if (data.path) {
       ui.repoInput.value = data.path;
-      updateOutputIndicator(data.path);
+      updateDownloadButton(data.path);
       setButtonState(true);
       log(`Repositorio seleccionado: ${data.path}`);
     }
@@ -152,14 +156,8 @@ async function generate() {
     (data.steps ?? [data.message]).forEach((step) => log(step));
 
     setProgress(100);
-
-    if (data.output_path) {
-      ui.outputPath.innerHTML =
-        `<span class="output-icon">📄</span><span class="gd-output-path">${data.output_path}</span>`;
-      setStatus("done");
-    } else {
-      setStatus("done");
-    }
+    updateDownloadButton(repoPath, /* enabled */ !data.error);
+    setStatus(data.error ? "error" : "done");
   } catch (err) {
     log(`Error de comunicación: ${err.message}`, "error");
     setStatus("error");
@@ -184,9 +182,9 @@ ui.themeToggle.addEventListener("change", () => {
 
 // Allow typing the repo path directly
 ui.repoInput.addEventListener("input", () => {
-  const hasPath = ui.repoInput.value.trim().length > 0;
-  setButtonState(hasPath);
-  updateOutputIndicator(ui.repoInput.value.trim());
+  const path = ui.repoInput.value.trim();
+  setButtonState(path.length > 0);
+  updateDownloadButton(path);
 });
 
 // ── Init ─────────────────────────────────────────────────────────────
