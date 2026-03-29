@@ -23,6 +23,7 @@ const ui = {
   themeToggle:      document.getElementById("themeToggle"),
   docTypeInputs:    document.querySelectorAll('input[name="docType"]'),
   progressWrap:     document.getElementById("progressWrap"),
+  progressPct:      document.getElementById("progressPct"),
   btnDownload:      document.getElementById("btnDownload"),
   btnDownloadLabel: document.getElementById("btnDownloadLabel"),
   statusDot:        document.getElementById("statusDot"),
@@ -49,6 +50,7 @@ function log(message, level = "info") {
 function setProgress(pct) {
   _progressCurrent = Math.min(100, Math.max(0, pct));
   ui.progressBar.style.width = `${_progressCurrent}%`;
+  ui.progressPct.textContent = `${Math.round(_progressCurrent)}%`;
 }
 
 function setProgressTarget(pct) {

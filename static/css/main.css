@@ -298,6 +298,36 @@ body {
 }
 
 /* Progress bar */
+.gd-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gd-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.gd-progress-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--gd-muted);
+}
+
+.gd-progress-pct {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--gd-primary);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s;
+  min-width: 2.8rem;
+  text-align: right;
+}
+
 .gd-progress-wrap {
   background: var(--gd-progress-track);
   border-radius: 99px;
