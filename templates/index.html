@@ -92,6 +92,35 @@
         </div>
       </div>
 
+      <!-- ── Tipo de documento ────────────────────────────────── -->
+      <div class="mb-4">
+        <div class="gd-label">Tipo de documento <span style="color:#ef4444">*</span></div>
+        <div class="gd-segment" role="group" aria-label="Tipo de documento">
+
+          <input type="radio" name="docType" id="dtTechnical"
+                 class="gd-segment-input" value="technical" checked />
+          <label for="dtTechnical" class="gd-segment-option">
+            <span class="gd-segment-icon">🔧</span>
+            <span class="gd-segment-text">Documentación técnica</span>
+          </label>
+
+          <input type="radio" name="docType" id="dtUserManual"
+                 class="gd-segment-input" value="user_manual" />
+          <label for="dtUserManual" class="gd-segment-option">
+            <span class="gd-segment-icon">📖</span>
+            <span class="gd-segment-text">Manual de Usuario</span>
+          </label>
+
+          <input type="radio" name="docType" id="dtExecutive"
+                 class="gd-segment-input" value="executive" />
+          <label for="dtExecutive" class="gd-segment-option">
+            <span class="gd-segment-icon">📊</span>
+            <span class="gd-segment-text">Presentación Ejecutiva</span>
+          </label>
+
+        </div>
+      </div>
+
       <!-- ── Botón principal ───────────────────────────────────── -->
       <button id="btnGenerate" class="btn-generate mb-1" disabled>
         ⚡ Generar Documentación

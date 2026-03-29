@@ -22,6 +22,7 @@ const ui = {
   logArea:        document.getElementById("logArea"),
   progressBar:    document.getElementById("progressBar"),
   themeToggle:    document.getElementById("themeToggle"),
+  docTypeInputs:  document.querySelectorAll('input[name="docType"]'),
   progressWrap:   document.getElementById("progressWrap"),
   btnDownload:    document.getElementById("btnDownload"),
   btnDownloadLabel: document.getElementById("btnDownloadLabel"),
@@ -64,8 +65,21 @@ function setStatus(state) {
   ui.statusText.textContent = labels[state] ?? "Listo";
 }
 
+const DOC_TYPE_SUFFIX = {
+  technical:   "documentacion_tecnica",
+  user_manual: "manual_usuario",
+  executive:   "presentacion_ejecutiva",
+};
+
 function repoName(repoPath) {
   return repoPath.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || "repositorio";
+}
+
+function selectedDocType() {
+  for (const input of ui.docTypeInputs) {
+    if (input.checked) return input.value;
+  }
+  return "technical";
 }
 
 function updateDownloadButton(repoPath, enabled = false) {
@@ -74,7 +88,8 @@ function updateDownloadButton(repoPath, enabled = false) {
     ui.btnDownload.disabled = true;
     return;
   }
-  const filename = `${repoName(repoPath)}_documentacion.docx`;
+  const suffix   = DOC_TYPE_SUFFIX[selectedDocType()] ?? "documentacion";
+  const filename = `${repoName(repoPath)}_${suffix}.docx`;
   ui.btnDownloadLabel.textContent = `Descargar ${filename}`;
   ui.btnDownload.disabled = !enabled;
 }
@@ -143,7 +158,7 @@ async function generate() {
     const resp = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo_path: repoPath, template_path: templatePath }),
+      body: JSON.stringify({ repo_path: repoPath, template_path: templatePath, doc_type: selectedDocType() }),
     });
 
     clearInterval(ticker);
@@ -173,6 +188,12 @@ async function generate() {
 ui.btnBrowseRepo.addEventListener("click", browseFolder);
 ui.btnBrowseTpl.addEventListener("click", browseFile);
 ui.btnGenerate.addEventListener("click", generate);
+
+ui.docTypeInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    updateDownloadButton(ui.repoInput.value.trim(), !ui.btnDownload.disabled);
+  });
+});
 
 ui.themeToggle.addEventListener("change", () => {
   const theme = ui.themeToggle.checked ? "dark" : "light";

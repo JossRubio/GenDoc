@@ -24,11 +24,12 @@ def api_browse_file():
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
     body = request.get_json(silent=True) or {}
-    repo_path = (body.get("repo_path") or "").strip()
+    repo_path     = (body.get("repo_path")     or "").strip()
     template_path = (body.get("template_path") or "").strip() or None
+    doc_type      = (body.get("doc_type")      or "").strip() or None
 
     if not repo_path:
         return jsonify({"steps": ["Error: no se recibió la ruta del repositorio."], "error": "no_path"}), 400
 
-    result = generate_documentation(repo_path, template_path)
+    result = generate_documentation(repo_path, template_path, doc_type)
     return jsonify(result)

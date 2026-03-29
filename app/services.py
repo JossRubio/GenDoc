@@ -8,6 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
+from .generators import DEFAULT_DOC_TYPE, GENERATORS, get_generator
 from .repo_reader import scan
 
 
@@ -43,17 +44,27 @@ def browse_file() -> str | None:
     return path or None
 
 
-def generate_documentation(repo_path: str, template_path: str | None = None) -> dict:
+def generate_documentation(
+    repo_path: str,
+    template_path: str | None = None,
+    doc_type: str = DEFAULT_DOC_TYPE,
+) -> dict:
     """
     Phase 1: scan the repository and report found files.
     Returns a dict with keys: steps (list[str]), output_path (str | None), error (str | None).
     """
     steps: list[str] = []
 
-    # ── 1. Validate path ─────────────────────────────────────────────
+    # ── 1. Validate inputs ───────────────────────────────────────────
     if not repo_path:
         return {"steps": ["Error: no se especificó ningún repositorio."], "error": "no_path"}
 
+    try:
+        generator = get_generator(doc_type)
+    except ValueError as exc:
+        return {"steps": [f"Error: {exc}"], "error": str(exc)}
+
+    steps.append(f"Tipo de documento: {generator.DISPLAY_NAME}")
     steps.append(f"Analizando repositorio: {repo_path}")
 
     # ── 2. Scan ──────────────────────────────────────────────────────
@@ -84,7 +95,8 @@ def generate_documentation(repo_path: str, template_path: str | None = None) -> 
     steps.append("Repositorio analizado. Listo para generar documentación.")
 
     # ── 4. Resolve output path ───────────────────────────────────────
+    repo_name = Path(repo_path).resolve().name
     output_dir = os.getenv("OUTPUT_DIR") or repo_path
-    output_path = str(Path(output_dir) / "documentacion.docx")
+    output_path = str(generator.output_path(repo_name, output_dir))
 
     return {"steps": steps, "output_path": output_path, "error": None}
