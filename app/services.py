@@ -13,7 +13,6 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
-from . import ai_service
 from .generators import DEFAULT_DOC_TYPE, get_generator
 from .repo_reader import scan
 
@@ -211,6 +210,9 @@ def _run(repo_path: str, template_path: str | None, doc_type: str):
     yield _log("Construyendo prompt...")
     yield _progress(40)
     yield _log(f"Llamando al modelo {model_name}. Esto puede tardar unos segundos...")
+
+    # Imported here so the heavy google-genai SDK is not loaded at app startup.
+    from . import ai_service  # noqa: PLC0415
 
     try:
         markdown = ai_service.generate_documentation(

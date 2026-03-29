@@ -15,9 +15,6 @@ from __future__ import annotations
 
 import os
 
-from google import genai
-from google.genai import errors as genai_errors
-
 from .repo_reader import RepoScan
 
 # ── Section definitions per document type ────────────────────────────
@@ -224,6 +221,12 @@ def generate_documentation(
         ) from exc
 
     # ── Call Gemini ──────────────────────────────────────────────────
+    # Imported here (not at module level) to avoid slow SDK initialization
+    # on every app startup — the SDK is only needed when the user actually
+    # clicks "Generar".
+    from google import genai                      # noqa: PLC0415
+    from google.genai import errors as genai_errors  # noqa: PLC0415
+
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(model=model_name, contents=prompt)
