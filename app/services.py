@@ -69,15 +69,44 @@ def browse_file() -> str | None:
 
 # ── Template reader ───────────────────────────────────────────────────
 
-def _read_template(template_path: str) -> str | None:
-    """Return the template's text content, or None if it can't be decoded."""
-    ext = Path(template_path).suffix.lower()
+def _read_template(template_path: str) -> tuple[str | None, str | None]:
+    """
+    Read the template file and return (content, error_message).
+    content is None when the file cannot be used; error_message explains why.
+    """
+    p = Path(template_path)
+
+    if not p.exists():
+        return None, f"El archivo de plantilla ya no existe: {template_path}"
+
+    if not p.is_file():
+        return None, f"La ruta de plantilla no apunta a un archivo: {template_path}"
+
+    ext = p.suffix.lower()
     if ext == ".docx":
-        return None  # docx export support comes in the next phase
+        return None, (
+            "Las plantillas .docx no se pueden leer como texto plano todavía. "
+            "Se usará la estructura predefinida."
+        )
+
     try:
-        return Path(template_path).read_text(encoding="utf-8", errors="strict")
-    except (UnicodeDecodeError, OSError):
-        return None
+        content = p.read_text(encoding="utf-8", errors="strict")
+        return content, None
+    except UnicodeDecodeError:
+        return None, (
+            "La plantilla contiene caracteres que no se pueden leer como UTF-8. "
+            "Se usará la estructura predefinida."
+        )
+    except PermissionError:
+        return None, (
+            f"Sin permisos para leer el archivo de plantilla: {template_path}. "
+            "Se usará la estructura predefinida."
+        )
+    except OSError as exc:
+        return None, (
+            f"No se pudo leer el archivo de plantilla ({exc}). "
+            "Se usará la estructura predefinida."
+        )
 
 
 # ── Main streaming generator ──────────────────────────────────────────
@@ -96,16 +125,29 @@ def generate_documentation_stream(
         done      — generation complete; carries markdown + output_path
         error     — fatal error; generation stops after this event
     """
+    # Top-level guard: catch any bug we didn't anticipate so the stream
+    # always closes cleanly instead of leaving the browser hanging.
+    try:
+        yield from _run(repo_path, template_path, doc_type)
+    except Exception as exc:
+        yield _error(
+            f"Error interno inesperado: {exc}. "
+            "Por favor reporta este problema."
+        )
+
+
+def _run(repo_path: str, template_path: str | None, doc_type: str):
+    """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
-    if not repo_path:
+    if not repo_path or not repo_path.strip():
         yield _error("No se especificó ningún repositorio.")
         return
 
     try:
         generator = get_generator(doc_type)
     except ValueError as exc:
-        yield _error(str(exc))
+        yield _error(f"Tipo de documento inválido: {exc}")
         return
 
     yield _log(f"Tipo de documento: {generator.DISPLAY_NAME}")
@@ -117,16 +159,32 @@ def generate_documentation_stream(
     try:
         repo_scan = scan(repo_path)
     except ValueError as exc:
-        yield _error(str(exc))
+        yield _error(f"No se pudo leer el repositorio. {exc}")
+        return
+    except Exception as exc:
+        yield _error(
+            f"Error inesperado al escanear el repositorio: {exc}"
+        )
         return
 
     if repo_scan.total_files == 0:
-        yield _error("No se encontraron archivos de código fuente en el repositorio.")
+        yield _error(
+            "No se encontraron archivos de código fuente en el repositorio. "
+            "Verifica que la carpeta seleccionada sea la raíz del proyecto y "
+            "que contenga archivos con extensiones reconocidas (.py, .js, .ts, etc.)."
+        )
         return
 
     yield _log(f"Archivos encontrados ({repo_scan.total_files}):")
     for f in repo_scan.files:
         yield _log(f"  \u2192 {f.relative_path}  ({f.extension})")
+
+    if repo_scan.skipped:
+        yield _log(
+            f"  {len(repo_scan.skipped)} archivo(s) omitido(s) "
+            "(sin permisos de lectura o demasiado grandes).",
+            level="warn",
+        )
 
     size_kb = repo_scan.total_bytes / 1024
     yield _log(
@@ -139,41 +197,59 @@ def generate_documentation_stream(
     template_content: str | None = None
     if template_path:
         yield _log(f"Cargando plantilla: {template_path}")
-        template_content = _read_template(template_path)
-        if template_content is None:
-            yield _log(
-                "La plantilla no pudo leerse como texto plano — "
-                "se usará la estructura predefinida.",
-                level="warn",
-            )
+        template_content, err_msg = _read_template(template_path)
+        if err_msg:
+            # Template errors are non-fatal: warn and continue without it
+            yield _log(err_msg, level="warn")
         else:
             yield _log("Plantilla cargada correctamente.", level="success")
 
     yield _progress(30)
 
     # ── 4. Call LLM ──────────────────────────────────────────────────
-    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
     yield _log("Construyendo prompt...")
     yield _progress(40)
-    yield _log(f"Llamando al modelo {model_name}...")
+    yield _log(f"Llamando al modelo {model_name}. Esto puede tardar unos segundos...")
 
     try:
         markdown = ai_service.generate_documentation(
             repo_scan, doc_type, template_content
         )
-    except (ValueError, RuntimeError) as exc:
-        yield _error(str(exc))
+    except ValueError as exc:
+        # Config errors (missing/invalid API key, empty model name)
+        yield _error(f"Error de configuración: {exc}")
+        return
+    except RuntimeError as exc:
+        # API errors, network failures, blocked content, empty response
+        yield _error(f"Error al generar la documentación: {exc}")
         return
     except Exception as exc:
         yield _error(f"Error inesperado al llamar al modelo: {exc}")
         return
 
+    if not markdown or not markdown.strip():
+        yield _error(
+            "El modelo devolvió una respuesta vacía. "
+            "Intenta de nuevo o revisa que el repositorio tenga contenido legible."
+        )
+        return
+
     yield _progress(90)
 
     # ── 5. Resolve output path ───────────────────────────────────────
-    repo_name = Path(repo_path).resolve().name
-    output_dir = os.getenv("OUTPUT_DIR") or repo_path
-    output_path = str(generator.output_path(repo_name, output_dir))
+    try:
+        repo_name = Path(repo_path).resolve().name
+    except OSError:
+        repo_name = Path(repo_path).name  # fallback: use path as-is without resolving
+
+    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
+
+    try:
+        output_path = str(generator.output_path(repo_name, output_dir))
+    except Exception as exc:
+        yield _error(f"No se pudo determinar la ruta de salida: {exc}")
+        return
 
     yield _log("Documentación generada. Listo para exportar.", level="success")
     yield _progress(100)

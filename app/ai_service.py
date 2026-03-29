@@ -6,6 +6,9 @@ Public API
 generate_documentation(repo_scan, doc_type, template_content=None) -> str
     Build a prompt from the scanned repository, call Gemini, and return
     the response as a Markdown string.
+
+All exceptions are normalized to ValueError or RuntimeError so callers
+only need to catch those two types.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import os
 
 from google import genai
+from google.genai import errors as genai_errors
 
 from .repo_reader import RepoScan
 
@@ -57,8 +61,7 @@ _SECTIONS: dict[str, list[str]] = {
     ],
 }
 
-# Maximum characters of repo content included in the prompt.
-# Keeps requests within Gemini's context window and avoids huge costs.
+# Maximum characters of repo content sent in the prompt.
 _MAX_CONTEXT_CHARS = 350_000
 
 
@@ -68,7 +71,6 @@ def _build_repo_context(repo_scan: RepoScan) -> str:
     """Serialise the scanned repository as a readable Markdown block."""
     parts: list[str] = []
 
-    # 1. File tree
     parts.append("## Estructura del repositorio\n\n")
     for f in repo_scan.files:
         parts.append(f"- `{f.relative_path}`\n")
@@ -76,7 +78,6 @@ def _build_repo_context(repo_scan: RepoScan) -> str:
 
     used_chars = sum(len(p) for p in parts)
 
-    # 2. File contents — skip a file when the budget would be exceeded
     for f in repo_scan.files:
         lang = f.extension.lstrip(".") or "text"
         block = f"### `{f.relative_path}`\n\n```{lang}\n{f.content}\n```\n\n"
@@ -146,15 +147,41 @@ Usa **exactamente** estas convenciones Markdown:
 {repo_context}"""
 
 
-def _read_template(template_path: str) -> str | None:
-    """
-    Read the user-supplied template file and return its text content.
-    Returns None if the file cannot be decoded as text (e.g. binary .docx).
-    """
-    try:
-        return open(template_path, encoding="utf-8", errors="strict").read()
-    except (UnicodeDecodeError, OSError):
-        return None
+def _friendly_api_error(exc: genai_errors.APIError) -> str:
+    """Map Gemini API HTTP codes to user-friendly Spanish messages."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+
+    messages: dict[int, str] = {
+        400: (
+            "La solicitud al modelo fue rechazada (400). "
+            "Verifica que LLM_MODEL en .env sea un nombre de modelo válido."
+        ),
+        401: (
+            "La clave de API es inválida o no está autorizada (401). "
+            "Revisa LLM_API_KEY en tu archivo .env."
+        ),
+        403: (
+            "Sin permisos para usar este modelo (403). "
+            "Verifica que tu clave de API tenga acceso a Gemini."
+        ),
+        429: (
+            "Se superó la cuota de solicitudes al modelo (429). "
+            "Espera unos minutos y vuelve a intentarlo, o revisa tu plan en Google AI Studio."
+        ),
+        500: (
+            "Error interno del servidor de Google (500). "
+            "El servicio puede estar temporalmente no disponible. Intenta de nuevo en unos minutos."
+        ),
+        503: (
+            "El servicio de Gemini no está disponible en este momento (503). "
+            "Intenta de nuevo más tarde."
+        ),
+    }
+
+    if code in messages:
+        return messages[code]
+
+    return f"Error de la API de Gemini ({code}): {exc}"
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -168,38 +195,77 @@ def generate_documentation(
     Call Gemini with a prompt built from *repo_scan* and return the
     response as a Markdown string.
 
-    Parameters
-    ----------
-    repo_scan:
-        Result of ``repo_reader.scan()``.
-    doc_type:
-        One of ``"technical"``, ``"user_manual"``, ``"executive"``.
-    template_content:
-        Plain-text content of the user's reference document, or ``None``.
-
     Raises
     ------
-    ValueError  — if ``LLM_API_KEY`` is not set.
-    RuntimeError — if the model returns an empty or blocked response.
+    ValueError   — configuration problems (missing/invalid API key, bad model name).
+    RuntimeError — API errors, network failures, empty or blocked responses.
     """
-    api_key = os.getenv("LLM_API_KEY", "")
+    # ── Validate config ──────────────────────────────────────────────
+    api_key = os.getenv("LLM_API_KEY", "").strip()
     if not api_key or api_key == "tu_api_key_aqui":
         raise ValueError(
             "LLM_API_KEY no está configurada. "
-            "Agrega tu clave de API en el archivo .env"
+            "Abre el archivo .env y reemplaza 'tu_api_key_aqui' con tu clave de Google AI Studio."
         )
 
-    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
-    prompt = _build_prompt(repo_scan, doc_type, template_content)
+    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
+    if not model_name:
+        raise ValueError(
+            "LLM_MODEL está vacío en el archivo .env. "
+            "Usa un valor como 'gemini-2.5-flash'."
+        )
 
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(model=model_name, contents=prompt)
+    # ── Build prompt ─────────────────────────────────────────────────
+    try:
+        prompt = _build_prompt(repo_scan, doc_type, template_content)
+    except Exception as exc:
+        raise RuntimeError(
+            f"No se pudo construir el prompt para el modelo: {exc}"
+        ) from exc
 
-    text = response.text
+    # ── Call Gemini ──────────────────────────────────────────────────
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(model=model_name, contents=prompt)
+    except genai_errors.ClientError as exc:
+        raise RuntimeError(_friendly_api_error(exc)) from exc
+    except genai_errors.ServerError as exc:
+        raise RuntimeError(_friendly_api_error(exc)) from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise RuntimeError(
+            f"No se pudo conectar con la API de Gemini. "
+            f"Verifica tu conexión a internet. Detalle: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            f"Error inesperado al llamar al modelo: {exc}"
+        ) from exc
+
+    # ── Validate response ────────────────────────────────────────────
+    # response.text raises ValueError when content is blocked by safety filters
+    try:
+        text = response.text
+    except ValueError:
+        # Inspect finish reason for a clearer message
+        finish_reason = "desconocido"
+        try:
+            finish_reason = str(response.candidates[0].finish_reason)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"El modelo rechazó generar el contenido (motivo: {finish_reason}). "
+            "Esto ocurre cuando el contenido del repositorio activa los filtros de seguridad. "
+            "Intenta con un repositorio diferente."
+        )
+    except AttributeError as exc:
+        raise RuntimeError(
+            f"La respuesta del modelo tiene un formato inesperado: {exc}"
+        ) from exc
+
     if not text or not text.strip():
         raise RuntimeError(
             "El modelo devolvió una respuesta vacía. "
-            "Revisa que la clave API sea válida y que el repositorio no esté vacío."
+            "Revisa que el repositorio contenga archivos con código legible."
         )
 
     return text

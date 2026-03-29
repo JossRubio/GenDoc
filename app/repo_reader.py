@@ -60,6 +60,7 @@ class SourceFile:
 class RepoScan:
     root: str
     files: list[SourceFile]
+    skipped: list[str]   # paths skipped due to read errors or size limit
 
     @property
     def total_bytes(self) -> int:
@@ -79,17 +80,31 @@ def scan(repo_path: str) -> RepoScan:
 
     Raises
     ------
-    ValueError  — if *repo_path* does not exist or is not a directory.
+    ValueError  — if *repo_path* does not exist, is not a directory, or
+                  cannot be accessed due to permissions.
     """
-    root = Path(repo_path).resolve()
-    if not root.exists():
+    try:
+        root = Path(repo_path).resolve()
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Ruta inválida: {repo_path} — {exc}") from exc
+
+    try:
+        exists = root.exists()
+        is_dir = root.is_dir()
+    except PermissionError:
+        raise ValueError(
+            f"Sin permisos para acceder a la ruta: {repo_path}"
+        )
+
+    if not exists:
         raise ValueError(f"La ruta no existe: {repo_path}")
-    if not root.is_dir():
+    if not is_dir:
         raise ValueError(f"La ruta no es una carpeta: {repo_path}")
 
     collected: list[SourceFile] = []
+    skipped: list[str] = []
 
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, onerror=None):
         # Prune ignored directories in-place so os.walk skips their subtrees
         dirnames[:] = [
             d for d in dirnames
@@ -102,14 +117,21 @@ def scan(repo_path: str) -> RepoScan:
                 continue
 
             abs_path = Path(dirpath) / filename
-            size = abs_path.stat().st_size
+
+            try:
+                size = abs_path.stat().st_size
+            except OSError:
+                skipped.append(str(abs_path.relative_to(root)).replace("\\", "/"))
+                continue
 
             if size > MAX_FILE_BYTES:
-                continue  # skip very large binary-ish files
+                skipped.append(str(abs_path.relative_to(root)).replace("\\", "/"))
+                continue
 
             try:
                 content = abs_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
+                skipped.append(str(abs_path.relative_to(root)).replace("\\", "/"))
                 continue
 
             collected.append(
@@ -121,4 +143,4 @@ def scan(repo_path: str) -> RepoScan:
                 )
             )
 
-    return RepoScan(root=str(root), files=collected)
+    return RepoScan(root=str(root), files=collected, skipped=skipped)
