@@ -1,5 +1,8 @@
-from flask import Blueprint, render_template, jsonify, request
-from .services import browse_folder, browse_file, generate_documentation
+import json
+
+from flask import Blueprint, Response, render_template, jsonify, request, stream_with_context
+
+from .services import browse_folder, browse_file, generate_documentation_stream
 
 main = Blueprint("main", __name__)
 
@@ -29,7 +32,21 @@ def api_generate():
     doc_type      = (body.get("doc_type")      or "").strip() or None
 
     if not repo_path:
-        return jsonify({"steps": ["Error: no se recibió la ruta del repositorio."], "error": "no_path"}), 400
+        # Return a minimal SSE error so the client can handle it uniformly
+        def immediate_error():
+            yield f"data: {json.dumps({'type': 'error', 'message': 'No se recibió la ruta del repositorio.'})}\n\n"
+        return Response(immediate_error(), mimetype="text/event-stream")
 
-    result = generate_documentation(repo_path, template_path, doc_type)
-    return jsonify(result)
+    def event_stream():
+        for event in generate_documentation_stream(repo_path, template_path, doc_type):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering if proxied
+            "Connection": "keep-alive",
+        },
+    )

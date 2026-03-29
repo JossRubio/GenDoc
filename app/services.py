@@ -1,19 +1,44 @@
 """
 services.py — Business logic layer.
-All future document generation, analysis, and AI calls go here.
+
+The main entry point is ``generate_documentation_stream()``, a generator
+that yields SSE-ready event dicts as work progresses.  Routes consume it
+via Flask's ``stream_with_context``.
 """
+
+from __future__ import annotations
 
 import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
-from .generators import DEFAULT_DOC_TYPE, GENERATORS, get_generator
+from . import ai_service
+from .generators import DEFAULT_DOC_TYPE, get_generator
 from .repo_reader import scan
 
 
+# ── SSE event constructors ────────────────────────────────────────────
+
+def _log(message: str, level: str = "info") -> dict:
+    return {"type": "log", "message": message, "level": level}
+
+
+def _progress(pct: int) -> dict:
+    return {"type": "progress", "pct": pct}
+
+
+def _done(markdown: str, output_path: str) -> dict:
+    return {"type": "done", "markdown": markdown, "output_path": output_path}
+
+
+def _error(message: str) -> dict:
+    return {"type": "error", "message": message}
+
+
+# ── Dialog helpers ────────────────────────────────────────────────────
+
 def _get_tk_root():
-    """Create a hidden Tk root window for dialogs."""
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -21,7 +46,6 @@ def _get_tk_root():
 
 
 def browse_folder() -> str | None:
-    """Open a native folder picker dialog and return the selected path."""
     root = _get_tk_root()
     path = filedialog.askdirectory(title="Seleccionar repositorio")
     root.destroy()
@@ -29,7 +53,6 @@ def browse_folder() -> str | None:
 
 
 def browse_file() -> str | None:
-    """Open a native file picker dialog and return the selected path."""
     root = _get_tk_root()
     path = filedialog.askopenfilename(
         title="Seleccionar plantilla",
@@ -44,59 +67,114 @@ def browse_file() -> str | None:
     return path or None
 
 
-def generate_documentation(
+# ── Template reader ───────────────────────────────────────────────────
+
+def _read_template(template_path: str) -> str | None:
+    """Return the template's text content, or None if it can't be decoded."""
+    ext = Path(template_path).suffix.lower()
+    if ext == ".docx":
+        return None  # docx export support comes in the next phase
+    try:
+        return Path(template_path).read_text(encoding="utf-8", errors="strict")
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
+# ── Main streaming generator ──────────────────────────────────────────
+
+def generate_documentation_stream(
     repo_path: str,
     template_path: str | None = None,
     doc_type: str = DEFAULT_DOC_TYPE,
-) -> dict:
+):
     """
-    Phase 1: scan the repository and report found files.
-    Returns a dict with keys: steps (list[str]), output_path (str | None), error (str | None).
+    Generator — yields SSE event dicts as work progresses.
+
+    Sequence of events:
+        log       — a line to display in the UI log area
+        progress  — update the progress bar (0-100)
+        done      — generation complete; carries markdown + output_path
+        error     — fatal error; generation stops after this event
     """
-    steps: list[str] = []
 
     # ── 1. Validate inputs ───────────────────────────────────────────
     if not repo_path:
-        return {"steps": ["Error: no se especificó ningún repositorio."], "error": "no_path"}
+        yield _error("No se especificó ningún repositorio.")
+        return
 
     try:
         generator = get_generator(doc_type)
     except ValueError as exc:
-        return {"steps": [f"Error: {exc}"], "error": str(exc)}
+        yield _error(str(exc))
+        return
 
-    steps.append(f"Tipo de documento: {generator.DISPLAY_NAME}")
-    steps.append(f"Analizando repositorio: {repo_path}")
+    yield _log(f"Tipo de documento: {generator.DISPLAY_NAME}")
+    yield _progress(5)
 
-    # ── 2. Scan ──────────────────────────────────────────────────────
+    # ── 2. Scan repository ───────────────────────────────────────────
+    yield _log(f"Analizando repositorio: {repo_path}")
+
     try:
-        result = scan(repo_path)
+        repo_scan = scan(repo_path)
     except ValueError as exc:
-        steps.append(f"Error: {exc}")
-        return {"steps": steps, "error": str(exc)}
+        yield _error(str(exc))
+        return
 
-    # ── 3. Build log lines ───────────────────────────────────────────
-    if result.total_files == 0:
-        steps.append("No se encontraron archivos de código fuente en el repositorio.")
-        return {"steps": steps, "output_path": None}
+    if repo_scan.total_files == 0:
+        yield _error("No se encontraron archivos de código fuente en el repositorio.")
+        return
 
-    steps.append(f"Archivos encontrados ({result.total_files}):")
-    for f in result.files:
-        steps.append(f"  → {f.relative_path}  ({f.extension})")
+    yield _log(f"Archivos encontrados ({repo_scan.total_files}):")
+    for f in repo_scan.files:
+        yield _log(f"  \u2192 {f.relative_path}  ({f.extension})")
 
-    size_kb = result.total_bytes / 1024
-    steps.append(
-        f"Total: {result.total_files} archivo{'s' if result.total_files != 1 else ''}"
-        f" | {size_kb:.1f} KB de código fuente"
+    size_kb = repo_scan.total_bytes / 1024
+    yield _log(
+        f"Total: {repo_scan.total_files} archivo"
+        f"{'s' if repo_scan.total_files != 1 else ''} | {size_kb:.1f} KB"
     )
+    yield _progress(20)
 
+    # ── 3. Load template ─────────────────────────────────────────────
+    template_content: str | None = None
     if template_path:
-        steps.append(f"Plantilla seleccionada: {template_path}")
+        yield _log(f"Cargando plantilla: {template_path}")
+        template_content = _read_template(template_path)
+        if template_content is None:
+            yield _log(
+                "La plantilla no pudo leerse como texto plano — "
+                "se usará la estructura predefinida.",
+                level="warn",
+            )
+        else:
+            yield _log("Plantilla cargada correctamente.", level="success")
 
-    steps.append("Repositorio analizado. Listo para generar documentación.")
+    yield _progress(30)
 
-    # ── 4. Resolve output path ───────────────────────────────────────
+    # ── 4. Call LLM ──────────────────────────────────────────────────
+    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    yield _log("Construyendo prompt...")
+    yield _progress(40)
+    yield _log(f"Llamando al modelo {model_name}...")
+
+    try:
+        markdown = ai_service.generate_documentation(
+            repo_scan, doc_type, template_content
+        )
+    except (ValueError, RuntimeError) as exc:
+        yield _error(str(exc))
+        return
+    except Exception as exc:
+        yield _error(f"Error inesperado al llamar al modelo: {exc}")
+        return
+
+    yield _progress(90)
+
+    # ── 5. Resolve output path ───────────────────────────────────────
     repo_name = Path(repo_path).resolve().name
     output_dir = os.getenv("OUTPUT_DIR") or repo_path
     output_path = str(generator.output_path(repo_name, output_dir))
 
-    return {"steps": steps, "output_path": output_path, "error": None}
+    yield _log("Documentación generada. Listo para exportar.", level="success")
+    yield _progress(100)
+    yield _done(markdown=markdown, output_path=output_path)

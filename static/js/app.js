@@ -5,7 +5,6 @@
 (function initTheme() {
   const saved = localStorage.getItem("gd-theme") ?? "light";
   document.documentElement.setAttribute("data-theme", saved);
-  // Sync checkbox after DOM is ready
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("themeToggle").checked = saved === "dark";
   });
@@ -14,56 +13,73 @@
 // ── UI refs ──────────────────────────────────────────────────────────
 
 const ui = {
-  repoInput:      document.getElementById("repoPath"),
-  templateInput:  document.getElementById("templatePath"),
-  btnBrowseRepo:  document.getElementById("btnBrowseRepo"),
-  btnBrowseTpl:   document.getElementById("btnBrowseTemplate"),
-  btnGenerate:    document.getElementById("btnGenerate"),
-  logArea:        document.getElementById("logArea"),
-  progressBar:    document.getElementById("progressBar"),
-  themeToggle:    document.getElementById("themeToggle"),
-  docTypeInputs:  document.querySelectorAll('input[name="docType"]'),
-  progressWrap:   document.getElementById("progressWrap"),
-  btnDownload:    document.getElementById("btnDownload"),
+  repoInput:        document.getElementById("repoPath"),
+  templateInput:    document.getElementById("templatePath"),
+  btnBrowseRepo:    document.getElementById("btnBrowseRepo"),
+  btnBrowseTpl:     document.getElementById("btnBrowseTemplate"),
+  btnGenerate:      document.getElementById("btnGenerate"),
+  logArea:          document.getElementById("logArea"),
+  progressBar:      document.getElementById("progressBar"),
+  themeToggle:      document.getElementById("themeToggle"),
+  docTypeInputs:    document.querySelectorAll('input[name="docType"]'),
+  progressWrap:     document.getElementById("progressWrap"),
+  btnDownload:      document.getElementById("btnDownload"),
   btnDownloadLabel: document.getElementById("btnDownloadLabel"),
-  statusDot:      document.getElementById("statusDot"),
-  statusText:     document.getElementById("statusText"),
+  statusDot:        document.getElementById("statusDot"),
+  statusText:       document.getElementById("statusText"),
 };
 
-// ── State ───────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────
 
-let isRunning = false;
+let isRunning       = false;
+let generatedMarkdown = null;   // stored after a successful generation
+let _progressTarget = 0;        // last value set by backend
+let _progressCurrent = 0;
+let _progressTicker = null;
 
-// ── Helpers ─────────────────────────────────────────────────────────
+// ── Log & progress helpers ───────────────────────────────────────────
 
-function log(message, type = "info") {
-  const prefix = {
-    info:    "  ",
-    success: "✓ ",
-    error:   "✗ ",
-    warn:    "⚠ ",
-  }[type] ?? "  ";
-
-  const timestamp = new Date().toLocaleTimeString("es", { hour12: false });
-  ui.logArea.value += `[${timestamp}] ${prefix}${message}\n`;
+function log(message, level = "info") {
+  const prefix = { info: "  ", success: "✓ ", error: "✗ ", warn: "⚠ " }[level] ?? "  ";
+  const ts = new Date().toLocaleTimeString("es", { hour12: false });
+  ui.logArea.value += `[${ts}] ${prefix}${message}\n`;
   ui.logArea.scrollTop = ui.logArea.scrollHeight;
 }
 
 function setProgress(pct) {
-  ui.progressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  _progressCurrent = Math.min(100, Math.max(0, pct));
+  ui.progressBar.style.width = `${_progressCurrent}%`;
+}
+
+function setProgressTarget(pct) {
+  _progressTarget = pct;
+}
+
+function startProgressTicker() {
+  if (_progressTicker) return;
+  _progressTicker = setInterval(() => {
+    if (_progressCurrent < _progressTarget) {
+      // Quickly catch up to the target set by backend events
+      setProgress(_progressCurrent + Math.min(2, _progressTarget - _progressCurrent));
+    } else if (_progressCurrent < 88 && isRunning) {
+      // Creep slowly forward while waiting for the LLM (40 → 88)
+      setProgress(_progressCurrent + 0.15);
+    }
+  }, 200);
+}
+
+function stopProgressTicker() {
+  clearInterval(_progressTicker);
+  _progressTicker = null;
 }
 
 function setStatus(state) {
-  // state: "idle" | "running" | "done" | "error"
-  const labels = {
-    idle:    "Listo",
-    running: "Procesando...",
-    done:    "Completado",
-    error:   "Error",
-  };
+  const labels = { idle: "Listo", running: "Procesando...", done: "Completado", error: "Error" };
   ui.statusDot.className = `gd-status-dot ${state === "idle" ? "" : state}`;
   ui.statusText.textContent = labels[state] ?? "Listo";
 }
+
+// ── Download button ──────────────────────────────────────────────────
 
 const DOC_TYPE_SUFFIX = {
   technical:   "documentacion_tecnica",
@@ -98,7 +114,7 @@ function setButtonState(enabled) {
   ui.btnGenerate.disabled = !enabled || isRunning;
 }
 
-// ── Browse handlers ─────────────────────────────────────────────────
+// ── Browse handlers ──────────────────────────────────────────────────
 
 async function browseFolder() {
   try {
@@ -110,7 +126,7 @@ async function browseFolder() {
       setButtonState(true);
       log(`Repositorio seleccionado: ${data.path}`);
     }
-  } catch (err) {
+  } catch {
     log("No se pudo abrir el selector de carpeta.", "error");
   }
 }
@@ -123,12 +139,67 @@ async function browseFile() {
       ui.templateInput.value = data.path;
       log(`Plantilla seleccionada: ${data.path}`);
     }
-  } catch (err) {
+  } catch {
     log("No se pudo abrir el selector de archivo.", "error");
   }
 }
 
-// ── Generate handler ────────────────────────────────────────────────
+// ── SSE stream consumer ──────────────────────────────────────────────
+
+async function consumeSSE(resp, repoPath) {
+  const reader  = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer    = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE lines end with \n\n; split on double newline
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop();  // last (possibly incomplete) block stays in buffer
+
+    for (const block of blocks) {
+      for (const line of block.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+        handleEvent(event, repoPath);
+      }
+    }
+  }
+}
+
+function handleEvent(event, repoPath) {
+  switch (event.type) {
+    case "log":
+      log(event.message, event.level ?? "info");
+      break;
+
+    case "progress":
+      setProgressTarget(event.pct);
+      break;
+
+    case "done":
+      stopProgressTicker();
+      setProgress(100);
+      generatedMarkdown = event.markdown;
+      updateDownloadButton(repoPath, true);
+      setStatus("done");
+      break;
+
+    case "error":
+      stopProgressTicker();
+      log(event.message, "error");
+      setProgress(0);
+      setStatus("error");
+      break;
+  }
+}
+
+// ── Generate handler ─────────────────────────────────────────────────
 
 async function generate() {
   if (isRunning) return;
@@ -141,39 +212,34 @@ async function generate() {
     return;
   }
 
-  isRunning = true;
+  isRunning         = true;
+  generatedMarkdown = null;
+  _progressCurrent  = 0;
+  _progressTarget   = 0;
+
   setButtonState(false);
+  updateDownloadButton(repoPath, false);
   setStatus("running");
   setProgress(0);
+  startProgressTicker();
   log("Iniciando generación de documentación...");
 
   try {
-    // Animate progress bar while waiting
-    let fakePct = 0;
-    const ticker = setInterval(() => {
-      fakePct = Math.min(fakePct + Math.random() * 8, 85);
-      setProgress(fakePct);
-    }, 400);
-
     const resp = await fetch("/api/generate", {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo_path: repoPath, template_path: templatePath, doc_type: selectedDocType() }),
+      body:    JSON.stringify({
+        repo_path:     repoPath,
+        template_path: templatePath,
+        doc_type:      selectedDocType(),
+      }),
     });
 
-    clearInterval(ticker);
-
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    await consumeSSE(resp, repoPath);
 
-    const data = await resp.json();
-
-    // Log each step returned by the backend
-    (data.steps ?? [data.message]).forEach((step) => log(step));
-
-    setProgress(100);
-    updateDownloadButton(repoPath, /* enabled */ !data.error);
-    setStatus(data.error ? "error" : "done");
   } catch (err) {
+    stopProgressTicker();
     log(`Error de comunicación: ${err.message}`, "error");
     setStatus("error");
     setProgress(0);
@@ -183,7 +249,7 @@ async function generate() {
   }
 }
 
-// ── Event listeners ─────────────────────────────────────────────────
+// ── Event listeners ──────────────────────────────────────────────────
 
 ui.btnBrowseRepo.addEventListener("click", browseFolder);
 ui.btnBrowseTpl.addEventListener("click", browseFile);
@@ -201,7 +267,6 @@ ui.themeToggle.addEventListener("change", () => {
   localStorage.setItem("gd-theme", theme);
 });
 
-// Allow typing the repo path directly
 ui.repoInput.addEventListener("input", () => {
   const path = ui.repoInput.value.trim();
   setButtonState(path.length > 0);
