@@ -3,36 +3,22 @@ md_to_docx.py — Converts a Markdown string to a Word (.docx) document.
 
 Public API
 ----------
-convert(markdown, output_path, *, primary_color, secondary_color) -> Path
+convert(markdown, output_path, *, doc_type, primary_color, secondary_color) -> Path
     Parse *markdown* and write a styled .docx to *output_path*.
     Returns the resolved Path of the written file.
 
 Colour roles
 ------------
-  primary_color   → H1, H2, table header background, footer title
-  secondary_color → H3+, inline/block code font, header text, footer separator
-
-Supported Markdown elements
----------------------------
-  # H1          → Cover page title (first) or Heading 1
-  ## H2         → Heading 2
-  ### H3        → Heading 3
-  #### H4+      → Heading 4
-  Paragraph     → Normal
-  - / * list    → List Bullet
-  1. list       → List Number
-  ``` code ```  → fenced code block → monospaced paragraph with shading
-  | table |     → Word table with styled header row (centred)
-  **bold**      → bold run
-  *italic*      → italic run
-  `inline code` → monospaced run
-  blank lines   → paragraph separator (not extra blank paragraphs)
+  primary_color   → H1, H2, table header background, footer title, header text
+  secondary_color → H3+, inline/block code font
 
 Document structure
 ------------------
   Cover page    → title centred (vert + horiz), subtitle, month/year, rights
-  Header        → placeholder logo (left) + "Autor(a):" / "Draft generado…" (right, vcentred)
-  Footer        → project title · "Todos los derechos reservados, Mes Año" (left-aligned)
+  TOC page      → "Índice" (technical/user_manual) or "Agenda" (executive)
+                  Clickable entries jump to heading bookmarks in the body
+  Header        → placeholder logo (left) + "Autor(a):" / "Draft generado…" (right)
+  Footer        → project title · "Todos los derechos reservados, Mes Año" (left)
   Margins       → 1.27 cm on all sides (page + header/footer distance)
 
 Raises
@@ -100,7 +86,7 @@ def _make_placeholder_png(width: int = 120, height: int = 50) -> bytes:
 
     signature = b"\x89PNG\r\n\x1a\n"
     ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-    row  = bytes([210, 215, 230] * width)          # light steel-blue pixel (RGB)
+    row  = bytes([210, 215, 230] * width)
     raw  = b"".join(b"\x00" + row for _ in range(height))
     idat = chunk(b"IDAT", zlib.compress(raw, 6))
     iend = chunk(b"IEND", b"")
@@ -172,13 +158,84 @@ def _set_cell_valign(cell, val: str = "center") -> None:
 
 
 def _center_table(tbl) -> None:
-    """Set the table's horizontal alignment to centre."""
     tblPr = _get_or_add_tblPr(tbl._tbl)
     for old in tblPr.findall(qn("w:jc")):
         tblPr.remove(old)
     jc = OxmlElement("w:jc")
     jc.set(qn("w:val"), "center")
     tblPr.append(jc)
+
+
+def _add_page_break(doc: Document) -> None:
+    """Insert an explicit page break paragraph."""
+    para = doc.add_paragraph()
+    para.paragraph_format.space_before = Pt(0)
+    para.paragraph_format.space_after  = Pt(0)
+    run  = para.add_run()
+    br   = OxmlElement("w:br")
+    br.set(qn("w:type"), "page")
+    run._r.append(br)
+
+
+# ── Bookmark helpers ──────────────────────────────────────────────────
+
+def _add_bookmark(para, anchor_id: str, bk_id: int) -> None:
+    """
+    Wrap the content of *para* in a named bookmark so that internal
+    hyperlinks (w:hyperlink w:anchor) can jump to it.
+    """
+    p = para._p
+
+    bkStart = OxmlElement("w:bookmarkStart")
+    bkStart.set(qn("w:id"),   str(bk_id))
+    bkStart.set(qn("w:name"), anchor_id)
+
+    # Insert right after <w:pPr> (if any), before the first run
+    pPr = p.find(qn("w:pPr"))
+    pos = (list(p).index(pPr) + 1) if pPr is not None else 0
+    p.insert(pos, bkStart)
+
+    bkEnd = OxmlElement("w:bookmarkEnd")
+    bkEnd.set(qn("w:id"), str(bk_id))
+    p.append(bkEnd)
+
+
+def _add_toc_hyperlink(para, text: str, anchor: str,
+                        color_hex: str, half_pts: int, bold: bool = False) -> None:
+    """
+    Append an internal hyperlink run to *para*.
+    *half_pts* is the font size in half-points (e.g. 22 = 11 pt).
+    """
+    hl = OxmlElement("w:hyperlink")
+    hl.set(qn("w:anchor"), anchor)
+
+    r    = OxmlElement("w:r")
+    rPr  = OxmlElement("w:rPr")
+
+    color_el = OxmlElement("w:color")
+    color_el.set(qn("w:val"), color_hex)
+    rPr.append(color_el)
+
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(half_pts))
+    rPr.append(sz)
+
+    if bold:
+        rPr.append(OxmlElement("w:b"))
+
+    u = OxmlElement("w:u")
+    u.set(qn("w:val"), "single")
+    rPr.append(u)
+
+    r.append(rPr)
+
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = text
+    r.append(t)
+
+    hl.append(r)
+    para._p.append(hl)
 
 
 # ── Inline markup parser ──────────────────────────────────────────────
@@ -208,8 +265,9 @@ def _add_inline(para, text: str, secondary_rgb: RGBColor) -> None:
 # ── Document styling helpers ──────────────────────────────────────────
 
 def _heading(doc: Document, text: str, level: int, first_h1: list,
-             primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
-    """Add a heading paragraph with colour driven by the palette."""
+             primary_rgb: RGBColor, secondary_rgb: RGBColor,
+             anchor_id: str | None = None, bk_id: int | None = None) -> None:
+    """Add a heading paragraph. If anchor_id/bk_id are given, attaches a bookmark."""
     if level == 1 and not first_h1:
         para = doc.add_paragraph(style="Title")
         para.clear()
@@ -217,20 +275,23 @@ def _heading(doc: Document, text: str, level: int, first_h1: list,
         run.font.color.rgb = primary_rgb
         run.font.size = Pt(26)
         first_h1.append(True)
+        if anchor_id is not None and bk_id is not None:
+            _add_bookmark(para, anchor_id, bk_id)
         return
 
     style_map = {1: "Heading 1", 2: "Heading 2", 3: "Heading 3", 4: "Heading 4"}
     para  = doc.add_paragraph(style=style_map.get(level, "Heading 4"))
     para.clear()
     run   = para.add_run(text)
-    # H1 / H2 → primary colour;  H3+ → secondary colour
     run.font.color.rgb = primary_rgb if level <= 2 else secondary_rgb
     sizes = {1: Pt(20), 2: Pt(16), 3: Pt(13), 4: Pt(11)}
     run.font.size = sizes.get(level, Pt(11))
 
+    if anchor_id is not None and bk_id is not None:
+        _add_bookmark(para, anchor_id, bk_id)
+
 
 def _code_block(doc: Document, lines: list[str], secondary_rgb: RGBColor) -> None:
-    """Add a shaded, monospaced code block."""
     for line in lines:
         para = doc.add_paragraph(style="Normal")
         _set_para_shading(para, _COLOR_CODE_BG)
@@ -246,7 +307,6 @@ def _code_block(doc: Document, lines: list[str], secondary_rgb: RGBColor) -> Non
 
 def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
                  primary_hex: str, secondary_rgb: RGBColor) -> None:
-    """Parse a Markdown table and add a centred Word table with a styled header row."""
     def _split_row(line: str) -> list[str]:
         return [c.strip() for c in line.strip().strip("|").split("|")]
 
@@ -273,23 +333,17 @@ def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
             else:
                 _add_inline(para, cell_text, secondary_rgb)
 
-    doc.add_paragraph()  # spacing after table
+    doc.add_paragraph()
 
 
 # ── Cover page ────────────────────────────────────────────────────────
 
 def _add_cover_page(doc: Document, title: str,
                     primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
-    """
-    Add a cover page as section 1 (vertical-centre alignment) followed by a
-    'next page' section break.  The main body is section 2.
-    """
-    month_year = _month_year_es()
-
+    month_year  = _month_year_es()
     body_sectPr = doc.element.body.sectPr
     orig_pgSz   = body_sectPr.find(qn("w:pgSz")) if body_sectPr is not None else None
 
-    # ── Title ────────────────────────────────────────────────────────
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_para.paragraph_format.space_before = Pt(0)
@@ -299,7 +353,6 @@ def _add_cover_page(doc: Document, title: str,
     run.font.bold      = True
     run.font.color.rgb = primary_rgb
 
-    # ── Subtitle ─────────────────────────────────────────────────────
     sub_para = doc.add_paragraph()
     sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub_para.paragraph_format.space_before = Pt(0)
@@ -309,7 +362,6 @@ def _add_cover_page(doc: Document, title: str,
     sub_run.font.italic    = True
     sub_run.font.color.rgb = secondary_rgb
 
-    # ── Month / year ─────────────────────────────────────────────────
     date_para = doc.add_paragraph()
     date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     date_para.paragraph_format.space_before = Pt(0)
@@ -318,7 +370,6 @@ def _add_cover_page(doc: Document, title: str,
     date_run.font.size      = Pt(10)
     date_run.font.color.rgb = _COLOR_GRAY
 
-    # ── Rights notice ────────────────────────────────────────────────
     rights_para = doc.add_paragraph()
     rights_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     rights_para.paragraph_format.space_before = Pt(0)
@@ -327,7 +378,7 @@ def _add_cover_page(doc: Document, title: str,
     rights_run.font.size      = Pt(10)
     rights_run.font.color.rgb = _COLOR_GRAY
 
-    # ── Section break paragraph ───────────────────────────────────────
+    # Section break → next page (cover section with vAlign=center)
     sep_para = doc.add_paragraph()
     sep_para.paragraph_format.space_before = Pt(0)
     sep_para.paragraph_format.space_after  = Pt(0)
@@ -347,14 +398,12 @@ def _add_cover_page(doc: Document, title: str,
         pgSz.set(qn("w:h"), "15840")
         sectPr.append(pgSz)
 
-    # 1.27 cm = 720 twips — used for the cover section margins
     pgMar = OxmlElement("w:pgMar")
     for attr in ("w:top", "w:right", "w:bottom", "w:left", "w:header", "w:footer"):
         pgMar.set(qn(attr), "720")
     pgMar.set(qn("w:gutter"), "0")
     sectPr.append(pgMar)
 
-    # Vertical centre for the cover page
     vAlign = OxmlElement("w:vAlign")
     vAlign.set(qn("w:val"), "center")
     sectPr.append(vAlign)
@@ -362,32 +411,74 @@ def _add_cover_page(doc: Document, title: str,
     pPr.append(sectPr)
 
 
+# ── TOC / Agenda page ────────────────────────────────────────────────
+
+def _add_toc_page(
+    doc: Document,
+    headings: list[tuple[int, str, str]],
+    toc_title: str,
+    primary_rgb:   RGBColor,
+    primary_hex:   str,
+    secondary_rgb: RGBColor,
+    secondary_hex: str,
+) -> None:
+    """
+    Add a TOC/Agenda page after the cover page.
+
+    *headings* is a list of (level, text, anchor_id) for H1–H3 entries.
+    Each entry is a clickable internal hyperlink.
+    A page break at the end forces body content onto the next page.
+    """
+    # ── Section title ────────────────────────────────────────────────
+    toc_heading = doc.add_paragraph()
+    toc_heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    toc_heading.paragraph_format.space_before = Pt(0)
+    toc_heading.paragraph_format.space_after  = Pt(16)
+    run = toc_heading.add_run(toc_title)
+    run.font.size      = Pt(20)
+    run.font.bold      = True
+    run.font.color.rgb = primary_rgb
+
+    # ── Entries ──────────────────────────────────────────────────────
+    # Visual config per level:
+    #   level 1 → 0.00" indent, 11 pt (22 half-pts), bold, primary colour
+    #   level 2 → 0.30" indent, 10 pt (20 half-pts), normal, primary colour
+    #   level 3 → 0.55" indent,  9 pt (18 half-pts), normal, secondary colour
+    _LEVEL_CFG = {
+        1: (Inches(0.00), 22, True,  primary_hex),
+        2: (Inches(0.30), 20, False, primary_hex),
+        3: (Inches(0.55), 18, False, secondary_hex),
+    }
+
+    for level, text, anchor in headings:
+        indent, half_pts, bold, hex_col = _LEVEL_CFG.get(
+            level, (Inches(0.55), 18, False, secondary_hex)
+        )
+        para = doc.add_paragraph()
+        para.paragraph_format.left_indent  = indent
+        para.paragraph_format.space_before = Pt(2)
+        para.paragraph_format.space_after  = Pt(2)
+        _add_toc_hyperlink(para, text, anchor, hex_col, half_pts, bold)
+
+    # ── Page break → body starts on next page ────────────────────────
+    _add_page_break(doc)
+
+
 # ── Header & footer ───────────────────────────────────────────────────
 
 def _setup_header_footer(doc: Document, project_title: str,
                          primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
-    """
-    Header layout (borderless 2-column table):
-        [logo placeholder]  |  Autor(a):                ← both lines vertically
-                            |  Draft generado por GenDoc    centred next to image
-
-    Footer layout (left-aligned):
-        <project title>   ·   Todos los derechos reservados, Mes Año
-    """
     month_year = _month_year_es()
     section    = doc.sections[-1]
 
-    # ── Header ───────────────────────────────────────────────────────
+    # ── Header (borderless 2-column table) ───────────────────────────
     header  = section.header
-    # Letter paper (21.59 cm) minus 2 × 1.27 cm margins = 19.05 cm usable width
     hdr_tbl = header.add_table(rows=1, cols=2, width=Cm(19.05))
     _remove_table_borders(hdr_tbl)
 
-    # Logo column: 1.3 in (1872 twips); text column: ~6.2 in (8928 twips)
-    _set_cell_width(hdr_tbl.cell(0, 0), 1872)
-    _set_cell_width(hdr_tbl.cell(0, 1), 8928)
+    _set_cell_width(hdr_tbl.cell(0, 0), 1872)   # ~1.3 in
+    _set_cell_width(hdr_tbl.cell(0, 1), 8928)   # rest
 
-    # Image cell — vertically centred
     cell_img = hdr_tbl.cell(0, 0)
     _set_cell_valign(cell_img, "center")
     p_img = cell_img.paragraphs[0]
@@ -395,7 +486,6 @@ def _setup_header_footer(doc: Document, project_title: str,
     run_img = p_img.add_run()
     run_img.add_picture(io.BytesIO(_make_placeholder_png(120, 50)), width=Inches(1.05))
 
-    # Text cell — vertically centred
     cell_txt = hdr_tbl.cell(0, 1)
     _set_cell_valign(cell_txt, "center")
 
@@ -415,12 +505,10 @@ def _setup_header_footer(doc: Document, project_title: str,
     r_draft.font.italic    = True
     r_draft.font.color.rgb = primary_rgb
 
-    # Remove the default leading <w:p> that precedes our table
     hdr_el  = header._element
     first_p = hdr_el.find(qn("w:p"))
     if first_p is not None:
         hdr_el.remove(first_p)
-    # OOXML requires at least one trailing <w:p> in headers/footers
     header.add_paragraph()
 
     # ── Footer ───────────────────────────────────────────────────────
@@ -448,6 +536,7 @@ def convert(
     markdown: str,
     output_path: str | Path,
     *,
+    doc_type:        str = "technical",
     primary_color:   str = _DEFAULT_PRIMARY,
     secondary_color: str = _DEFAULT_SECONDARY,
 ) -> Path:
@@ -456,8 +545,9 @@ def convert(
 
     Parameters
     ----------
-    primary_color   : hex string (e.g. '#2D3A8C') — title, H1/H2, table headers
-    secondary_color : hex string — H3+, code, header/footer accent text
+    doc_type        : 'technical' | 'user_manual' | 'executive'
+    primary_color   : hex string — title, H1/H2, table headers, header/footer text
+    secondary_color : hex string — H3+, code elements
 
     Raises
     ------
@@ -475,10 +565,11 @@ def convert(
     primary_rgb   = _hex_to_rgb(primary_color)
     primary_hex   = _hex_to_str(primary_color)
     secondary_rgb = _hex_to_rgb(secondary_color)
+    secondary_hex = _hex_to_str(secondary_color)
 
     doc = Document()
 
-    # ── Configure default body font ──────────────────────────────────
+    # ── Default body font ────────────────────────────────────────────
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
     style.font.size = Pt(11)
@@ -486,7 +577,7 @@ def convert(
     lines = markdown.splitlines()
     n     = len(lines)
 
-    # ── Find first H1 — used as the cover page title ─────────────────
+    # ── Find first H1 → cover title ──────────────────────────────────
     title          = None
     title_line_idx = -1
     for idx, line in enumerate(lines):
@@ -498,13 +589,41 @@ def convert(
     if not title:
         title = out.stem.replace("_", " ").title()
 
+    # ── Pre-scan all headings (H1–H3) for TOC + bookmarks ────────────
+    # heading_map : line_idx → (anchor_id, bookmark_id)
+    # toc_entries : list of (level, text, anchor_id) for TOC page
+    heading_map: dict[int, tuple[str, int]] = {}
+    toc_entries: list[tuple[int, str, str]] = []
+    seen_anchors: dict[str, int] = {}
+    bk_counter = 1
+
+    for idx, line in enumerate(lines):
+        if idx == title_line_idx:
+            continue
+        m = re.match(r"^(#{1,4})\s+(.*)", line)
+        if not m:
+            continue
+        level = len(m.group(1))
+        text  = m.group(2).strip()
+        # Build a Word-safe bookmark name (letters/digits/underscores, no leading digit)
+        slug = re.sub(r"[^\w]", "_", text)[:40].strip("_")
+        if not slug or slug[0].isdigit():
+            slug = "h_" + slug
+        count = seen_anchors.get(slug, 0)
+        seen_anchors[slug] = count + 1
+        anchor = slug if count == 0 else f"{slug}_{count}"
+        heading_map[idx] = (anchor, bk_counter)
+        if level <= 3:
+            toc_entries.append((level, text, anchor))
+        bk_counter += 1
+
     # ── Cover page (section 1, vAlign=center) ────────────────────────
     _add_cover_page(doc, title, primary_rgb, secondary_rgb)
 
-    # ── Header + footer on main section (section 2) ──────────────────
+    # ── Header + footer on main section ──────────────────────────────
     _setup_header_footer(doc, title, primary_rgb, secondary_rgb)
 
-    # ── Apply 1.27 cm margins to all sections (page + header/footer) ─
+    # ── Apply 1.27 cm margins to all sections ────────────────────────
     for sec in doc.sections:
         sec.top_margin      = Cm(1.27)
         sec.bottom_margin   = Cm(1.27)
@@ -513,16 +632,21 @@ def convert(
         sec.header_distance = Cm(1.27)
         sec.footer_distance = Cm(1.27)
 
-    # ── Process markdown body ────────────────────────────────────────
-    # first_h1 pre-filled: the title was consumed by the cover, so any
-    # remaining H1 lines render as Heading 1 (not the Title style).
+    # ── TOC / Agenda page ────────────────────────────────────────────
+    toc_title = "Agenda" if doc_type == "executive" else "Índice"
+    if toc_entries:
+        _add_toc_page(doc, toc_entries, toc_title,
+                      primary_rgb, primary_hex, secondary_rgb, secondary_hex)
+
+    # ── Process markdown body ─────────────────────────────────────────
+    # first_h1 pre-filled: cover consumed the title H1, remaining H1s
+    # render as Heading 1 (not the Title style).
     first_h1 = [True]
     i        = 0
 
     while i < n:
         line = lines[i]
 
-        # Skip the line already used for the cover title
         if i == title_line_idx:
             i += 1
             continue
@@ -550,9 +674,11 @@ def convert(
         # ── Headings ─────────────────────────────────────────────────
         heading_m = re.match(r"^(#{1,4})\s+(.*)", line)
         if heading_m:
-            level = len(heading_m.group(1))
-            text  = heading_m.group(2).strip()
-            _heading(doc, text, level, first_h1, primary_rgb, secondary_rgb)
+            level     = len(heading_m.group(1))
+            text      = heading_m.group(2).strip()
+            anchor_id, bk_id = heading_map.get(i, (None, None))
+            _heading(doc, text, level, first_h1, primary_rgb, secondary_rgb,
+                     anchor_id, bk_id)
             i += 1
             continue
 
@@ -576,7 +702,7 @@ def convert(
             i += 1
             continue
 
-        # ── Blank line → skip (paragraphs already spaced) ───────────
+        # ── Blank line ───────────────────────────────────────────────
         if not line.strip():
             i += 1
             continue

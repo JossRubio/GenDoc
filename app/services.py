@@ -261,7 +261,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
 
     # ── 6. Convert Markdown → .docx ──────────────────────────────────
     try:
-        kwargs = {}
+        kwargs: dict = {"doc_type": doc_type or "technical"}
         if primary_color:
             kwargs["primary_color"] = primary_color
         if secondary_color:
