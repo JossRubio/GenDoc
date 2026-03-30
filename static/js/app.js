@@ -32,11 +32,12 @@ const ui = {
 
 // ── State ────────────────────────────────────────────────────────────
 
-let isRunning       = false;
+let isRunning        = false;
 let generatedMarkdown = null;   // stored after a successful generation
-let _progressTarget = 0;        // last value set by backend
+let _downloadToken   = null;    // one-time token for /api/download/<token>
+let _progressTarget  = 0;
 let _progressCurrent = 0;
-let _progressTicker = null;
+let _progressTicker  = null;
 
 // ── Log & progress helpers ───────────────────────────────────────────
 
@@ -185,9 +186,14 @@ function handleEvent(event, repoPath) {
       break;
 
     case "done":
+      // Markdown is ready but docx conversion is still in progress — keep running state
+      generatedMarkdown = event.markdown;
+      break;
+
+    case "ready":
       stopProgressTicker();
       setProgress(100);
-      generatedMarkdown = event.markdown;
+      _downloadToken = event.token;
       updateDownloadButton(repoPath, true);
       setStatus("done");
       break;
@@ -216,6 +222,7 @@ async function generate() {
 
   isRunning         = true;
   generatedMarkdown = null;
+  _downloadToken    = null;
   _progressCurrent  = 0;
   _progressTarget   = 0;
 
@@ -253,9 +260,44 @@ async function generate() {
 
 // ── Event listeners ──────────────────────────────────────────────────
 
+// ── Download handler ─────────────────────────────────────────────────
+
+async function download() {
+  if (!_downloadToken) return;
+
+  try {
+    const resp = await fetch(`/api/download/${_downloadToken}`);
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      log(data.error ?? `Error al descargar (HTTP ${resp.status}).`, "error");
+      return;
+    }
+
+    // Extract filename from Content-Disposition or fall back to button label
+    const disposition = resp.headers.get("Content-Disposition") ?? "";
+    const nameMatch   = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^;"'\n]+)/i);
+    const filename    = nameMatch ? decodeURIComponent(nameMatch[1]) : "documentacion.docx";
+
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log(`Descargando ${filename}`, "success");
+  } catch (err) {
+    log(`Error al iniciar la descarga: ${err.message}`, "error");
+  }
+}
+
 ui.btnBrowseRepo.addEventListener("click", browseFolder);
 ui.btnBrowseTpl.addEventListener("click", browseFile);
 ui.btnGenerate.addEventListener("click", generate);
+ui.btnDownload.addEventListener("click", download);
 
 ui.docTypeInputs.forEach((input) => {
   input.addEventListener("change", () => {

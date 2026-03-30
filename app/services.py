@@ -13,6 +13,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
+from . import md_to_docx
 from .generators import DEFAULT_DOC_TYPE, get_generator
 from .repo_reader import scan
 
@@ -29,6 +30,10 @@ def _progress(pct: int) -> dict:
 
 def _done(markdown: str, output_path: str) -> dict:
     return {"type": "done", "markdown": markdown, "output_path": output_path}
+
+
+def _ready(output_path: str, filename: str) -> dict:
+    return {"type": "ready", "output_path": output_path, "filename": filename}
 
 
 def _error(message: str) -> dict:
@@ -248,6 +253,20 @@ def _run(repo_path: str, template_path: str | None, doc_type: str):
         yield _error(f"No se pudo determinar la ruta de salida: {exc}")
         return
 
-    yield _log("Documentación generada. Listo para exportar.", level="success")
+    yield _log("Markdown generado. Convirtiendo a documento Word...", level="success")
+    yield _progress(93)
+
+    # ── 6. Convert Markdown → .docx ──────────────────────────────────
+    try:
+        final_path = md_to_docx.convert(markdown, output_path)
+    except RuntimeError as exc:
+        yield _error(f"Error al crear el documento Word: {exc}")
+        return
+    except Exception as exc:
+        yield _error(f"Error inesperado al exportar el documento: {exc}")
+        return
+
+    filename = Path(output_path).name
+    yield _log(f"Documento Word listo: {filename}", level="success")
     yield _progress(100)
-    yield _done(markdown=markdown, output_path=output_path)
+    yield _ready(output_path=str(final_path), filename=filename)
