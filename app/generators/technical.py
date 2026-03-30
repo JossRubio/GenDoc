@@ -1,38 +1,40 @@
 """
-technical.py — Generator for "Documentación Técnica".
+technical.py — Documentación Técnica generator.
 
-Intended output structure:
-  1. Portada (nombre del proyecto, fecha, versión)
-  2. Índice
-  3. Descripción general del proyecto
-  4. Arquitectura y estructura de carpetas
-  5. Módulos y componentes (uno por archivo relevante)
-     - Propósito
-     - Dependencias
-     - Funciones / clases públicas con firma y descripción
-  6. Flujos de datos principales
-  7. Configuración y variables de entorno
-  8. Instrucciones de instalación y ejecución
-  9. Guía de contribución
+Output structure:
+  1.  Resumen del proyecto
+  2.  Arquitectura general del sistema
+  3.  Estructura de carpetas y archivos
+  4.  Descripción de módulos y componentes
+  5.  Flujo de datos / lógica principal
+  6.  Dependencias y requisitos
+  7.  Instrucciones de instalación y configuración
+  8.  Variables de entorno
+  9.  API / endpoints (si aplica)
+  10. Diagramas de flujo o arquitectura (descripción textual)
+  11. Notas técnicas y decisiones de diseño
 """
 
 from __future__ import annotations
 
-from ..repo_reader import RepoScan
 from .base import BaseGenerator
 
 
 class TechnicalDocsGenerator(BaseGenerator):
-    DOC_TYPE    = "technical"
+    DOC_TYPE     = "technical"
     DISPLAY_NAME = "Documentación técnica"
     FILE_SUFFIX  = "documentacion_tecnica"
 
-    def generate(self, repo_scan: RepoScan, template_path: str | None = None) -> bytes:
-        # TODO: implement with Gemini API
-        # Suggested prompt strategy:
-        #   - Send repo structure + each file content to the model
-        #   - Ask for a structured technical description per module
-        #   - Assemble sections with python-docx
-        raise NotImplementedError(
-            "TechnicalDocsGenerator.generate() — pendiente de implementar"
-        )
+    SECTIONS = [
+        "Resumen del proyecto",
+        "Arquitectura general del sistema",
+        "Estructura de carpetas y archivos",
+        "Descripción de módulos y componentes",
+        "Flujo de datos / lógica principal",
+        "Dependencias y requisitos",
+        "Instrucciones de instalación y configuración",
+        "Variables de entorno",
+        "API / endpoints (si aplica)",
+        "Diagramas de flujo o arquitectura (descripción textual)",
+        "Notas técnicas y decisiones de diseño",
+    ]

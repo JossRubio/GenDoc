@@ -205,21 +205,16 @@ def _run(repo_path: str, template_path: str | None, doc_type: str):
 
     yield _progress(30)
 
-    # ── 4. Call LLM ──────────────────────────────────────────────────
+    # ── 4. Generate Markdown via LLM ─────────────────────────────────
     model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
     yield _log("Construyendo prompt...")
     yield _progress(40)
     yield _log(f"Llamando al modelo {model_name}. Esto puede tardar unos segundos...")
 
-    # Imported here so the heavy google-genai SDK is not loaded at app startup.
-    from . import ai_service  # noqa: PLC0415
-
     try:
-        markdown = ai_service.generate_documentation(
-            repo_scan, doc_type, template_content
-        )
+        markdown = generator.generate(repo_scan, template_content)
     except ValueError as exc:
-        # Config errors (missing/invalid API key, empty model name)
+        # Config errors: missing/invalid API key, empty model name
         yield _error(f"Error de configuración: {exc}")
         return
     except RuntimeError as exc:

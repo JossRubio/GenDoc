@@ -1,23 +1,21 @@
 """
-user_manual.py — Generator for "Manual de Usuario".
+user_manual.py — Manual de Usuario generator.
 
-Intended output structure:
-  1. Portada
-  2. Índice
-  3. Introducción — qué hace la aplicación y para quién es
-  4. Requisitos del sistema
-  5. Instalación paso a paso
-  6. Primeros pasos (guía de inicio rápido)
-  7. Descripción de la interfaz (pantallas / secciones principales)
-  8. Funcionalidades detalladas — flujos de uso con ejemplos
-  9. Preguntas frecuentes (FAQ)
-  10. Solución de problemas comunes
-  11. Glosario
+Output structure:
+  1.  Introducción y propósito de la herramienta
+  2.  Requisitos previos
+  3.  Instalación / acceso
+  4.  Primeros pasos
+  5.  Guía de uso paso a paso
+  6.  Descripción de funcionalidades
+  7.  Casos de uso frecuentes
+  8.  Preguntas frecuentes (FAQ)
+  9.  Solución de problemas comunes
+  10. Glosario
 """
 
 from __future__ import annotations
 
-from ..repo_reader import RepoScan
 from .base import BaseGenerator
 
 
@@ -26,13 +24,15 @@ class UserManualGenerator(BaseGenerator):
     DISPLAY_NAME = "Manual de Usuario"
     FILE_SUFFIX  = "manual_usuario"
 
-    def generate(self, repo_scan: RepoScan, template_path: str | None = None) -> bytes:
-        # TODO: implement with Gemini API
-        # Suggested prompt strategy:
-        #   - Focus on entry-point files (main, app, index) and UI components
-        #   - Ask model to describe features from an end-user perspective
-        #   - Use plain language, avoid exposing internal implementation details
-        #   - Assemble with python-docx including screenshots placeholders
-        raise NotImplementedError(
-            "UserManualGenerator.generate() — pendiente de implementar"
-        )
+    SECTIONS = [
+        "Introducción y propósito de la herramienta",
+        "Requisitos previos",
+        "Instalación / acceso",
+        "Primeros pasos",
+        "Guía de uso paso a paso",
+        "Descripción de funcionalidades",
+        "Casos de uso frecuentes",
+        "Preguntas frecuentes (FAQ)",
+        "Solución de problemas comunes",
+        "Glosario",
+    ]
