@@ -128,8 +128,17 @@ def _set_para_shading(para, hex_color: str) -> None:
     pPr.append(shd)
 
 
+def _get_or_add_tblPr(tbl_el) -> object:
+    """Return the <w:tblPr> child of a CT_Tbl element, creating it if absent."""
+    tblPr = tbl_el.find(qn("w:tblPr"))
+    if tblPr is None:
+        tblPr = OxmlElement("w:tblPr")
+        tbl_el.insert(0, tblPr)
+    return tblPr
+
+
 def _remove_table_borders(table) -> None:
-    tblPr = table._tbl.get_or_add_tblPr()
+    tblPr = _get_or_add_tblPr(table._tbl)
     for old in tblPr.findall(qn("w:tblBorders")):
         tblPr.remove(old)
     borders = OxmlElement("w:tblBorders")
@@ -164,7 +173,7 @@ def _set_cell_valign(cell, val: str = "center") -> None:
 
 def _center_table(tbl) -> None:
     """Set the table's horizontal alignment to centre."""
-    tblPr = tbl._tbl.get_or_add_tblPr()
+    tblPr = _get_or_add_tblPr(tbl._tbl)
     for old in tblPr.findall(qn("w:jc")):
         tblPr.remove(old)
     jc = OxmlElement("w:jc")
@@ -370,7 +379,8 @@ def _setup_header_footer(doc: Document, project_title: str,
 
     # ── Header ───────────────────────────────────────────────────────
     header  = section.header
-    hdr_tbl = header.add_table(rows=1, cols=2)
+    # Letter paper (21.59 cm) minus 2 × 1.27 cm margins = 19.05 cm usable width
+    hdr_tbl = header.add_table(rows=1, cols=2, width=Cm(19.05))
     _remove_table_borders(hdr_tbl)
 
     # Logo column: 1.3 in (1872 twips); text column: ~6.2 in (8928 twips)
@@ -395,7 +405,7 @@ def _setup_header_footer(doc: Document, project_title: str,
     r_author = p_author.add_run("Autor(a):")
     r_author.font.size      = Pt(9)
     r_author.font.bold      = True
-    r_author.font.color.rgb = secondary_rgb
+    r_author.font.color.rgb = primary_rgb
 
     p_draft = cell_txt.add_paragraph()
     p_draft.paragraph_format.space_before = Pt(0)
@@ -403,7 +413,7 @@ def _setup_header_footer(doc: Document, project_title: str,
     r_draft = p_draft.add_run("Draft generado por GenDoc")
     r_draft.font.size      = Pt(8)
     r_draft.font.italic    = True
-    r_draft.font.color.rgb = secondary_rgb
+    r_draft.font.color.rgb = primary_rgb
 
     # Remove the default leading <w:p> that precedes our table
     hdr_el  = header._element
