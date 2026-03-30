@@ -28,6 +28,8 @@ const ui = {
   btnDownloadLabel: document.getElementById("btnDownloadLabel"),
   statusDot:        document.getElementById("statusDot"),
   statusText:       document.getElementById("statusText"),
+  colorPrimary:     document.getElementById("colorPrimary"),
+  colorSecondary:   document.getElementById("colorSecondary"),
 };
 
 // ── State ────────────────────────────────────────────────────────────
@@ -238,9 +240,11 @@ async function generate() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        repo_path:     repoPath,
-        template_path: templatePath,
-        doc_type:      selectedDocType(),
+        repo_path:       repoPath,
+        template_path:   templatePath,
+        doc_type:        selectedDocType(),
+        primary_color:   ui.colorPrimary.value,
+        secondary_color: ui.colorSecondary.value,
       }),
     });
 

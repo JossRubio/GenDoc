@@ -3,13 +3,18 @@ md_to_docx.py — Converts a Markdown string to a Word (.docx) document.
 
 Public API
 ----------
-convert(markdown, output_path) -> Path
+convert(markdown, output_path, *, primary_color, secondary_color) -> Path
     Parse *markdown* and write a styled .docx to *output_path*.
     Returns the resolved Path of the written file.
 
+Colour roles
+------------
+  primary_color   → H1, H2, table header background, footer title
+  secondary_color → H3+, inline/block code font, header text, footer separator
+
 Supported Markdown elements
 ---------------------------
-  # H1          → Cover page title (first occurrence) or Heading 1
+  # H1          → Cover page title (first) or Heading 1
   ## H2         → Heading 2
   ### H3        → Heading 3
   #### H4+      → Heading 4
@@ -17,7 +22,7 @@ Supported Markdown elements
   - / * list    → List Bullet
   1. list       → List Number
   ``` code ```  → fenced code block → monospaced paragraph with shading
-  | table |     → Word table with styled header row
+  | table |     → Word table with styled header row (centred)
   **bold**      → bold run
   *italic*      → italic run
   `inline code` → monospaced run
@@ -26,8 +31,9 @@ Supported Markdown elements
 Document structure
 ------------------
   Cover page    → title centred (vert + horiz), subtitle, month/year, rights
-  Header        → logo placeholder (left) + author text (right) on all body pages
-  Footer        → project title · "Todos los derechos reservados, Mes Año"
+  Header        → placeholder logo (left) + "Autor(a):" / "Draft generado…" (right, vcentred)
+  Footer        → project title · "Todos los derechos reservados, Mes Año" (left-aligned)
+  Margins       → 1.27 cm on all sides (page + header/footer distance)
 
 Raises
 ------
@@ -48,18 +54,27 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from docx.shared import Pt, RGBColor, Inches
+from docx.shared import Pt, RGBColor, Inches, Cm
 
 
-# ── Colour palette ────────────────────────────────────────────────────
+# ── Colour defaults ───────────────────────────────────────────────────
 
-_COLOR_HEADING1  = RGBColor(0x2D, 0x3A, 0x8C)   # dark indigo
-_COLOR_HEADING2  = RGBColor(0x1E, 0x6A, 0xA3)   # steel blue
-_COLOR_HEADING3  = RGBColor(0x28, 0x7A, 0x5F)   # teal
-_COLOR_CODE_BG   = "F0F0F5"                      # light grey (hex, no #)
-_COLOR_CODE_FONT = RGBColor(0x4B, 0x00, 0x82)   # indigo
-_COLOR_TABLE_HDR = "4F46E5"                      # brand purple (hex, no #)
-_COLOR_GRAY      = RGBColor(0x60, 0x60, 0x60)   # mid grey
+_DEFAULT_PRIMARY   = "#2D3A8C"
+_DEFAULT_SECONDARY = "#287A5F"
+
+_COLOR_GRAY  = RGBColor(0x60, 0x60, 0x60)
+_COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+_COLOR_CODE_BG = "F0F0F5"
+
+
+def _hex_to_rgb(hex_color: str) -> RGBColor:
+    h = hex_color.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _hex_to_str(hex_color: str) -> str:
+    """Return uppercase hex without '#', e.g. '2D3A8C'."""
+    return hex_color.lstrip("#").upper()
 
 
 # ── Localisation ──────────────────────────────────────────────────────
@@ -78,20 +93,17 @@ def _month_year_es() -> str:
 # ── Placeholder logo PNG ──────────────────────────────────────────────
 
 def _make_placeholder_png(width: int = 120, height: int = 50) -> bytes:
-    """
-    Build a minimal solid-colour PNG in memory (no external dependencies).
-    Returns raw PNG bytes representing a light steel-blue rectangle.
-    """
+    """Build a minimal solid-colour PNG in memory (no Pillow needed)."""
     def chunk(tag: bytes, data: bytes) -> bytes:
         crc = zlib.crc32(tag + data) & 0xFFFFFFFF
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
 
     signature = b"\x89PNG\r\n\x1a\n"
-    ihdr      = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-    row       = bytes([210, 215, 230] * width)           # light steel-blue pixel (RGB)
-    raw       = b"".join(b"\x00" + row for _ in range(height))
-    idat      = chunk(b"IDAT", zlib.compress(raw, 6))
-    iend      = chunk(b"IEND", b"")
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    row  = bytes([210, 215, 230] * width)          # light steel-blue pixel (RGB)
+    raw  = b"".join(b"\x00" + row for _ in range(height))
+    idat = chunk(b"IDAT", zlib.compress(raw, 6))
+    iend = chunk(b"IEND", b"")
     return signature + ihdr + idat + iend
 
 
@@ -117,7 +129,6 @@ def _set_para_shading(para, hex_color: str) -> None:
 
 
 def _remove_table_borders(table) -> None:
-    """Strip all visible borders from a table (used for layout tables)."""
     tblPr = table._tbl.get_or_add_tblPr()
     for old in tblPr.findall(qn("w:tblBorders")):
         tblPr.remove(old)
@@ -132,13 +143,41 @@ def _remove_table_borders(table) -> None:
     tblPr.append(borders)
 
 
+def _set_cell_width(cell, width_twips: int) -> None:
+    tcPr = cell._tc.get_or_add_tcPr()
+    for old in tcPr.findall(qn("w:tcW")):
+        tcPr.remove(old)
+    tcW = OxmlElement("w:tcW")
+    tcW.set(qn("w:w"),    str(width_twips))
+    tcW.set(qn("w:type"), "dxa")
+    tcPr.append(tcW)
+
+
+def _set_cell_valign(cell, val: str = "center") -> None:
+    tcPr = cell._tc.get_or_add_tcPr()
+    for old in tcPr.findall(qn("w:vAlign")):
+        tcPr.remove(old)
+    vAlign = OxmlElement("w:vAlign")
+    vAlign.set(qn("w:val"), val)
+    tcPr.append(vAlign)
+
+
+def _center_table(tbl) -> None:
+    """Set the table's horizontal alignment to centre."""
+    tblPr = tbl._tbl.get_or_add_tblPr()
+    for old in tblPr.findall(qn("w:jc")):
+        tblPr.remove(old)
+    jc = OxmlElement("w:jc")
+    jc.set(qn("w:val"), "center")
+    tblPr.append(jc)
+
+
 # ── Inline markup parser ──────────────────────────────────────────────
 
-# Matches: **bold**, *italic*, `code`, or plain text between them.
 _INLINE_RE = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|([^*`]+)", re.DOTALL)
 
 
-def _add_inline(para, text: str) -> None:
+def _add_inline(para, text: str, secondary_rgb: RGBColor) -> None:
     """Add *text* to *para*, honouring **bold**, *italic*, and `code`."""
     for m in _INLINE_RE.finditer(text):
         bold_txt, italic_txt, code_txt, plain_txt = m.groups()
@@ -150,23 +189,23 @@ def _add_inline(para, text: str) -> None:
             run.italic = True
         elif code_txt is not None:
             run = para.add_run(code_txt)
-            run.font.name = "Courier New"
-            run.font.size = Pt(9)
-            run.font.color.rgb = _COLOR_CODE_FONT
+            run.font.name      = "Courier New"
+            run.font.size      = Pt(9)
+            run.font.color.rgb = secondary_rgb
         elif plain_txt is not None:
             para.add_run(plain_txt)
 
 
 # ── Document styling helpers ──────────────────────────────────────────
 
-def _heading(doc: Document, text: str, level: int, first_h1: list) -> None:
-    """Add a heading paragraph with custom colour and size."""
+def _heading(doc: Document, text: str, level: int, first_h1: list,
+             primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
+    """Add a heading paragraph with colour driven by the palette."""
     if level == 1 and not first_h1:
-        # First H1 becomes the document Title style
         para = doc.add_paragraph(style="Title")
         para.clear()
         run = para.add_run(text)
-        run.font.color.rgb = _COLOR_HEADING1
+        run.font.color.rgb = primary_rgb
         run.font.size = Pt(26)
         first_h1.append(True)
         return
@@ -175,15 +214,13 @@ def _heading(doc: Document, text: str, level: int, first_h1: list) -> None:
     para  = doc.add_paragraph(style=style_map.get(level, "Heading 4"))
     para.clear()
     run   = para.add_run(text)
-    color = {1: _COLOR_HEADING1, 2: _COLOR_HEADING2, 3: _COLOR_HEADING3}.get(
-        level, _COLOR_HEADING3
-    )
-    run.font.color.rgb = color
-    sizes  = {1: Pt(20), 2: Pt(16), 3: Pt(13), 4: Pt(11)}
+    # H1 / H2 → primary colour;  H3+ → secondary colour
+    run.font.color.rgb = primary_rgb if level <= 2 else secondary_rgb
+    sizes = {1: Pt(20), 2: Pt(16), 3: Pt(13), 4: Pt(11)}
     run.font.size = sizes.get(level, Pt(11))
 
 
-def _code_block(doc: Document, lines: list[str]) -> None:
+def _code_block(doc: Document, lines: list[str], secondary_rgb: RGBColor) -> None:
     """Add a shaded, monospaced code block."""
     for line in lines:
         para = doc.add_paragraph(style="Normal")
@@ -193,27 +230,25 @@ def _code_block(doc: Document, lines: list[str]) -> None:
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after  = Pt(0)
         run = para.add_run(line)
-        run.font.name = "Courier New"
-        run.font.size = Pt(9)
-        run.font.color.rgb = _COLOR_CODE_FONT
+        run.font.name      = "Courier New"
+        run.font.size      = Pt(9)
+        run.font.color.rgb = secondary_rgb
 
 
-def _table_block(doc: Document, rows: list[str]) -> None:
-    """
-    Parse a Markdown table (list of raw pipe-delimited lines) and add
-    a Word table with a styled header row.
-    """
+def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
+                 primary_hex: str, secondary_rgb: RGBColor) -> None:
+    """Parse a Markdown table and add a centred Word table with a styled header row."""
     def _split_row(line: str) -> list[str]:
         return [c.strip() for c in line.strip().strip("|").split("|")]
 
-    # Filter out separator rows (e.g. |---|---|)
     data_rows = [r for r in rows if not re.match(r"^[\s|:\-]+$", r)]
     if not data_rows:
         return
 
-    cols     = len(_split_row(data_rows[0]))
-    tbl      = doc.add_table(rows=len(data_rows), cols=cols)
+    cols = len(_split_row(data_rows[0]))
+    tbl  = doc.add_table(rows=len(data_rows), cols=cols)
     tbl.style = "Table Grid"
+    _center_table(tbl)
 
     for r_idx, raw in enumerate(data_rows):
         cells = _split_row(raw)
@@ -222,38 +257,28 @@ def _table_block(doc: Document, rows: list[str]) -> None:
             cell.text = ""
             para = cell.paragraphs[0]
             if r_idx == 0:
-                _set_cell_bg(cell, _COLOR_TABLE_HDR)
+                _set_cell_bg(cell, primary_hex)
                 run = para.add_run(cell_text)
                 run.bold = True
-                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                run.font.color.rgb = _COLOR_WHITE
             else:
-                _add_inline(para, cell_text)
+                _add_inline(para, cell_text, secondary_rgb)
 
     doc.add_paragraph()  # spacing after table
 
 
 # ── Cover page ────────────────────────────────────────────────────────
 
-def _add_cover_page(doc: Document, title: str) -> None:
+def _add_cover_page(doc: Document, title: str,
+                    primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
     """
-    Add a cover page as section 1 with vertical centre alignment,
-    followed by a 'next page' section break.  The main body occupies
-    section 2 (the document-level sectPr).
-
-    Cover layout:
-        [vertically centred on the page]
-        <title>  — large, bold, indigo
-        Draft de documentación realizada por GenDoc  — smaller, italic
-        <Mes Año>
-        Todos los derechos reservados
+    Add a cover page as section 1 (vertical-centre alignment) followed by a
+    'next page' section break.  The main body is section 2.
     """
     month_year = _month_year_es()
 
-    # Read the document-level page size + margins BEFORE adding the section
-    # break paragraph so we can replicate them in the cover section.
     body_sectPr = doc.element.body.sectPr
     orig_pgSz   = body_sectPr.find(qn("w:pgSz")) if body_sectPr is not None else None
-    orig_pgMar  = body_sectPr.find(qn("w:pgMar")) if body_sectPr is not None else None
 
     # ── Title ────────────────────────────────────────────────────────
     title_para = doc.add_paragraph()
@@ -263,7 +288,7 @@ def _add_cover_page(doc: Document, title: str) -> None:
     run = title_para.add_run(title)
     run.font.size      = Pt(36)
     run.font.bold      = True
-    run.font.color.rgb = _COLOR_HEADING1
+    run.font.color.rgb = primary_rgb
 
     # ── Subtitle ─────────────────────────────────────────────────────
     sub_para = doc.add_paragraph()
@@ -273,7 +298,7 @@ def _add_cover_page(doc: Document, title: str) -> None:
     sub_run = sub_para.add_run("Draft de documentación realizada por GenDoc")
     sub_run.font.size      = Pt(14)
     sub_run.font.italic    = True
-    sub_run.font.color.rgb = _COLOR_HEADING2
+    sub_run.font.color.rgb = secondary_rgb
 
     # ── Month / year ─────────────────────────────────────────────────
     date_para = doc.add_paragraph()
@@ -294,8 +319,6 @@ def _add_cover_page(doc: Document, title: str) -> None:
     rights_run.font.color.rgb = _COLOR_GRAY
 
     # ── Section break paragraph ───────────────────────────────────────
-    # This paragraph's <w:sectPr> defines section 1 (cover).
-    # Everything after it belongs to section 2 (main body).
     sep_para = doc.add_paragraph()
     sep_para.paragraph_format.space_before = Pt(0)
     sep_para.paragraph_format.space_after  = Pt(0)
@@ -303,12 +326,10 @@ def _add_cover_page(doc: Document, title: str) -> None:
     pPr    = sep_para._p.get_or_add_pPr()
     sectPr = OxmlElement("w:sectPr")
 
-    # Break type: start a new page
     type_el = OxmlElement("w:type")
     type_el.set(qn("w:val"), "nextPage")
     sectPr.append(type_el)
 
-    # Copy page size from main section (fallback to US Letter)
     if orig_pgSz is not None:
         sectPr.append(copy.deepcopy(orig_pgSz))
     else:
@@ -317,11 +338,14 @@ def _add_cover_page(doc: Document, title: str) -> None:
         pgSz.set(qn("w:h"), "15840")
         sectPr.append(pgSz)
 
-    # Copy page margins from main section
-    if orig_pgMar is not None:
-        sectPr.append(copy.deepcopy(orig_pgMar))
+    # 1.27 cm = 720 twips — used for the cover section margins
+    pgMar = OxmlElement("w:pgMar")
+    for attr in ("w:top", "w:right", "w:bottom", "w:left", "w:header", "w:footer"):
+        pgMar.set(qn(attr), "720")
+    pgMar.set(qn("w:gutter"), "0")
+    sectPr.append(pgMar)
 
-    # Vertical alignment: centre — this is what centres the cover content
+    # Vertical centre for the cover page
     vAlign = OxmlElement("w:vAlign")
     vAlign.set(qn("w:val"), "center")
     sectPr.append(vAlign)
@@ -331,60 +355,73 @@ def _add_cover_page(doc: Document, title: str) -> None:
 
 # ── Header & footer ───────────────────────────────────────────────────
 
-def _setup_header_footer(doc: Document, project_title: str) -> None:
+def _setup_header_footer(doc: Document, project_title: str,
+                         primary_rgb: RGBColor, secondary_rgb: RGBColor) -> None:
     """
-    Configure header and footer on the last (main body) section.
+    Header layout (borderless 2-column table):
+        [logo placeholder]  |  Autor(a):                ← both lines vertically
+                            |  Draft generado por GenDoc    centred next to image
 
-    Header layout:
-        [logo placeholder image]   Autor(a):
-                                   Draft generado por GenDoc
-
-    Footer layout (centred):
-        <project title>  ·  Todos los derechos reservados, Mes Año
+    Footer layout (left-aligned):
+        <project title>   ·   Todos los derechos reservados, Mes Año
     """
     month_year = _month_year_es()
     section    = doc.sections[-1]
 
     # ── Header ───────────────────────────────────────────────────────
     header  = section.header
-    p0      = header.paragraphs[0]
-    p0.clear()
-    p0.paragraph_format.space_before = Pt(0)
-    p0.paragraph_format.space_after  = Pt(2)
+    hdr_tbl = header.add_table(rows=1, cols=2)
+    _remove_table_borders(hdr_tbl)
 
-    # Left: placeholder logo image (inline run)
-    img_run = p0.add_run()
-    img_run.add_picture(io.BytesIO(_make_placeholder_png(120, 50)), width=Inches(1.05))
+    # Logo column: 1.3 in (1872 twips); text column: ~6.2 in (8928 twips)
+    _set_cell_width(hdr_tbl.cell(0, 0), 1872)
+    _set_cell_width(hdr_tbl.cell(0, 1), 8928)
 
-    # Spacer between image and text
-    sp = p0.add_run("  ")
-    sp.font.size = Pt(10)
+    # Image cell — vertically centred
+    cell_img = hdr_tbl.cell(0, 0)
+    _set_cell_valign(cell_img, "center")
+    p_img = cell_img.paragraphs[0]
+    p_img.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run_img = p_img.add_run()
+    run_img.add_picture(io.BytesIO(_make_placeholder_png(120, 50)), width=Inches(1.05))
 
-    # Author label on the same line as the image
-    r_author = p0.add_run("Autor(a):")
+    # Text cell — vertically centred
+    cell_txt = hdr_tbl.cell(0, 1)
+    _set_cell_valign(cell_txt, "center")
+
+    p_author = cell_txt.paragraphs[0]
+    p_author.paragraph_format.space_before = Pt(0)
+    p_author.paragraph_format.space_after  = Pt(1)
+    r_author = p_author.add_run("Autor(a):")
     r_author.font.size      = Pt(9)
     r_author.font.bold      = True
-    r_author.font.color.rgb = _COLOR_GRAY
+    r_author.font.color.rgb = secondary_rgb
 
-    # Second line: "Draft generado por GenDoc" — indented to align with text above
-    p1 = header.add_paragraph()
-    p1.paragraph_format.left_indent  = Inches(1.2)
-    p1.paragraph_format.space_before = Pt(0)
-    p1.paragraph_format.space_after  = Pt(0)
-    r_draft = p1.add_run("Draft generado por GenDoc")
+    p_draft = cell_txt.add_paragraph()
+    p_draft.paragraph_format.space_before = Pt(0)
+    p_draft.paragraph_format.space_after  = Pt(0)
+    r_draft = p_draft.add_run("Draft generado por GenDoc")
     r_draft.font.size      = Pt(8)
     r_draft.font.italic    = True
-    r_draft.font.color.rgb = _COLOR_GRAY
+    r_draft.font.color.rgb = secondary_rgb
+
+    # Remove the default leading <w:p> that precedes our table
+    hdr_el  = header._element
+    first_p = hdr_el.find(qn("w:p"))
+    if first_p is not None:
+        hdr_el.remove(first_p)
+    # OOXML requires at least one trailing <w:p> in headers/footers
+    header.add_paragraph()
 
     # ── Footer ───────────────────────────────────────────────────────
-    footer   = section.footer
-    fp       = footer.paragraphs[0]
-    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer = section.footer
+    fp     = footer.paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     r_title = fp.add_run(project_title)
     r_title.font.bold      = True
     r_title.font.size      = Pt(9)
-    r_title.font.color.rgb = _COLOR_HEADING1
+    r_title.font.color.rgb = primary_rgb
 
     r_sep = fp.add_run("   ·   ")
     r_sep.font.size      = Pt(9)
@@ -397,9 +434,20 @@ def _setup_header_footer(doc: Document, project_title: str) -> None:
 
 # ── Main converter ────────────────────────────────────────────────────
 
-def convert(markdown: str, output_path: str | Path) -> Path:
+def convert(
+    markdown: str,
+    output_path: str | Path,
+    *,
+    primary_color:   str = _DEFAULT_PRIMARY,
+    secondary_color: str = _DEFAULT_SECONDARY,
+) -> Path:
     """
     Convert *markdown* to a styled .docx and write it to *output_path*.
+
+    Parameters
+    ----------
+    primary_color   : hex string (e.g. '#2D3A8C') — title, H1/H2, table headers
+    secondary_color : hex string — H3+, code, header/footer accent text
 
     Raises
     ------
@@ -412,9 +460,11 @@ def convert(markdown: str, output_path: str | Path) -> Path:
             "Crea la carpeta o cambia OUTPUT_DIR en .env."
         )
     if not out.parent.is_dir():
-        raise RuntimeError(
-            f"La ruta de salida no es una carpeta: {out.parent}."
-        )
+        raise RuntimeError(f"La ruta de salida no es una carpeta: {out.parent}.")
+
+    primary_rgb   = _hex_to_rgb(primary_color)
+    primary_hex   = _hex_to_str(primary_color)
+    secondary_rgb = _hex_to_rgb(secondary_color)
 
     doc = Document()
 
@@ -435,27 +485,34 @@ def convert(markdown: str, output_path: str | Path) -> Path:
             title          = m.group(1).strip()
             title_line_idx = idx
             break
-
     if not title:
-        # Fallback: derive from the output filename
         title = out.stem.replace("_", " ").title()
 
     # ── Cover page (section 1, vAlign=center) ────────────────────────
-    _add_cover_page(doc, title)
+    _add_cover_page(doc, title, primary_rgb, secondary_rgb)
 
     # ── Header + footer on main section (section 2) ──────────────────
-    _setup_header_footer(doc, title)
+    _setup_header_footer(doc, title, primary_rgb, secondary_rgb)
+
+    # ── Apply 1.27 cm margins to all sections (page + header/footer) ─
+    for sec in doc.sections:
+        sec.top_margin      = Cm(1.27)
+        sec.bottom_margin   = Cm(1.27)
+        sec.left_margin     = Cm(1.27)
+        sec.right_margin    = Cm(1.27)
+        sec.header_distance = Cm(1.27)
+        sec.footer_distance = Cm(1.27)
 
     # ── Process markdown body ────────────────────────────────────────
-    # first_h1 starts pre-filled: the title was consumed by the cover page,
-    # so any remaining H1s should render as Heading 1 (not Title style).
+    # first_h1 pre-filled: the title was consumed by the cover, so any
+    # remaining H1 lines render as Heading 1 (not the Title style).
     first_h1 = [True]
     i        = 0
 
     while i < n:
         line = lines[i]
 
-        # Skip the line already consumed for the cover title
+        # Skip the line already used for the cover title
         if i == title_line_idx:
             i += 1
             continue
@@ -467,7 +524,7 @@ def convert(markdown: str, output_path: str | Path) -> Path:
             while i < n and not lines[i].startswith("```"):
                 code_lines.append(lines[i])
                 i += 1
-            _code_block(doc, code_lines)
+            _code_block(doc, code_lines, secondary_rgb)
             i += 1
             continue
 
@@ -477,7 +534,7 @@ def convert(markdown: str, output_path: str | Path) -> Path:
             while i < n and "|" in lines[i] and lines[i].strip().startswith("|"):
                 table_rows.append(lines[i])
                 i += 1
-            _table_block(doc, table_rows)
+            _table_block(doc, table_rows, primary_rgb, primary_hex, secondary_rgb)
             continue
 
         # ── Headings ─────────────────────────────────────────────────
@@ -485,21 +542,21 @@ def convert(markdown: str, output_path: str | Path) -> Path:
         if heading_m:
             level = len(heading_m.group(1))
             text  = heading_m.group(2).strip()
-            _heading(doc, text, level, first_h1)
+            _heading(doc, text, level, first_h1, primary_rgb, secondary_rgb)
             i += 1
             continue
 
         # ── Unordered list ───────────────────────────────────────────
         if re.match(r"^\s*[-*]\s+", line):
             para = doc.add_paragraph(style="List Bullet")
-            _add_inline(para, re.sub(r"^\s*[-*]\s+", "", line))
+            _add_inline(para, re.sub(r"^\s*[-*]\s+", "", line), secondary_rgb)
             i += 1
             continue
 
         # ── Ordered list ─────────────────────────────────────────────
         if re.match(r"^\s*\d+\.\s+", line):
             para = doc.add_paragraph(style="List Number")
-            _add_inline(para, re.sub(r"^\s*\d+\.\s+", "", line))
+            _add_inline(para, re.sub(r"^\s*\d+\.\s+", "", line), secondary_rgb)
             i += 1
             continue
 
@@ -516,7 +573,7 @@ def convert(markdown: str, output_path: str | Path) -> Path:
 
         # ── Normal paragraph ─────────────────────────────────────────
         para = doc.add_paragraph(style="Normal")
-        _add_inline(para, line)
+        _add_inline(para, line, secondary_rgb)
         i += 1
 
     # ── Write file ───────────────────────────────────────────────────
@@ -528,8 +585,6 @@ def convert(markdown: str, output_path: str | Path) -> Path:
             "Cierra el archivo si está abierto en Word e intenta de nuevo."
         )
     except OSError as exc:
-        raise RuntimeError(
-            f"No se pudo guardar el documento Word: {exc}"
-        )
+        raise RuntimeError(f"No se pudo guardar el documento Word: {exc}")
 
     return out

@@ -34,10 +34,12 @@ def api_browse_file():
 
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
-    body          = request.get_json(silent=True) or {}
-    repo_path     = (body.get("repo_path")     or "").strip()
-    template_path = (body.get("template_path") or "").strip() or None
-    doc_type      = (body.get("doc_type")      or "").strip() or None
+    body            = request.get_json(silent=True) or {}
+    repo_path       = (body.get("repo_path")       or "").strip()
+    template_path   = (body.get("template_path")   or "").strip() or None
+    doc_type        = (body.get("doc_type")         or "").strip() or None
+    primary_color   = (body.get("primary_color")   or "").strip() or None
+    secondary_color = (body.get("secondary_color") or "").strip() or None
 
     if not repo_path:
         def immediate_error():
@@ -45,7 +47,8 @@ def api_generate():
         return Response(immediate_error(), mimetype="text/event-stream")
 
     def event_stream():
-        for event in generate_documentation_stream(repo_path, template_path, doc_type):
+        for event in generate_documentation_stream(repo_path, template_path, doc_type,
+                                                    primary_color, secondary_color):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

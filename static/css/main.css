@@ -483,6 +483,77 @@ body {
 [data-theme="dark"] .icon-sun  { opacity: 0.35; }
 [data-theme="dark"] .icon-moon { opacity: 1; }
 
+/* ── Color palette pickers ───────────────────────────────────────── */
+
+.gd-color-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.gd-color-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1;
+  background: var(--gd-input-bg);
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  transition: var(--gd-transition), border-color 0.15s;
+}
+
+.gd-color-item:hover {
+  border-color: var(--gd-primary);
+}
+
+.gd-color-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--gd-border);
+  border-radius: 7px;
+  padding: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: transparent;
+  transition: border-color 0.15s;
+}
+
+.gd-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.gd-color-input::-webkit-color-swatch         { border: none; border-radius: 4px; }
+.gd-color-input::-moz-color-swatch            { border: none; border-radius: 4px; }
+
+.gd-color-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.gd-color-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gd-text);
+  white-space: nowrap;
+  transition: color 0.25s;
+}
+
+.gd-color-desc {
+  font-size: 0.67rem;
+  color: var(--gd-muted);
+  line-height: 1.35;
+  transition: color 0.25s;
+}
+
+@media (max-width: 480px) {
+  .gd-color-row {
+    flex-direction: column;
+  }
+}
+
 /* Responsive tweaks */
 @media (max-width: 540px) {
   .gd-card {

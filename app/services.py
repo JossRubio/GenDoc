@@ -119,6 +119,8 @@ def generate_documentation_stream(
     repo_path: str,
     template_path: str | None = None,
     doc_type: str = DEFAULT_DOC_TYPE,
+    primary_color: str | None = None,
+    secondary_color: str | None = None,
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -132,7 +134,7 @@ def generate_documentation_stream(
     # Top-level guard: catch any bug we didn't anticipate so the stream
     # always closes cleanly instead of leaving the browser hanging.
     try:
-        yield from _run(repo_path, template_path, doc_type)
+        yield from _run(repo_path, template_path, doc_type, primary_color, secondary_color)
     except Exception as exc:
         yield _error(
             f"Error interno inesperado: {exc}. "
@@ -140,7 +142,8 @@ def generate_documentation_stream(
         )
 
 
-def _run(repo_path: str, template_path: str | None, doc_type: str):
+def _run(repo_path: str, template_path: str | None, doc_type: str,
+         primary_color: str | None, secondary_color: str | None):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -258,7 +261,12 @@ def _run(repo_path: str, template_path: str | None, doc_type: str):
 
     # ── 6. Convert Markdown → .docx ──────────────────────────────────
     try:
-        final_path = md_to_docx.convert(markdown, output_path)
+        kwargs = {}
+        if primary_color:
+            kwargs["primary_color"] = primary_color
+        if secondary_color:
+            kwargs["secondary_color"] = secondary_color
+        final_path = md_to_docx.convert(markdown, output_path, **kwargs)
     except RuntimeError as exc:
         yield _error(f"Error al crear el documento Word: {exc}")
         return
