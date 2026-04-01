@@ -50,6 +50,10 @@ class BaseGenerator:
     # what tone to use, and what to emphasise or avoid.
     PERSONA: str = ""
 
+    # Optional block injected just before the repo context.
+    # Use this for type-specific technical instructions (e.g. diagram syntax).
+    EXTRA_INSTRUCTIONS: str = ""
+
     # ── Prompt building ───────────────────────────────────────────────
 
     def build_prompt(
@@ -88,6 +92,11 @@ class BaseGenerator:
 
         repo_context = ai_service.build_repo_context(repo_scan)
 
+        extra_block = (
+            f"## Instrucciones específicas\n\n{self.EXTRA_INSTRUCTIONS}\n\n"
+            if self.EXTRA_INSTRUCTIONS else ""
+        )
+
         return (
             "Eres un experto en documentación de software. "
             "Tu tarea es generar documentación profesional en Markdown "
@@ -103,6 +112,7 @@ class BaseGenerator:
             "- No incluyas texto introductorio, aclaraciones ni comentarios "
             "fuera del documento en sí.\n"
             "- Responde **únicamente** con el documento Markdown completo.\n\n"
+            f"{extra_block}"
             f"---\n\n{repo_context}"
         )
 

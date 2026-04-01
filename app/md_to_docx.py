@@ -166,6 +166,15 @@ def _center_table(tbl) -> None:
     tblPr.append(jc)
 
 
+def _is_light_color(hex_color: str) -> bool:
+    """Return True if the colour is light enough that dark text is more readable."""
+    h = hex_color.lstrip("#")
+    r = int(h[0:2], 16)
+    g = int(h[2:4], 16)
+    b = int(h[4:6], 16)
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0 > 0.5
+
+
 def _add_page_break(doc: Document) -> None:
     """Insert an explicit page break paragraph."""
     para = doc.add_paragraph()
@@ -334,6 +343,47 @@ def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
                 _add_inline(para, cell_text, secondary_rgb)
 
     doc.add_paragraph()
+
+
+# ── Diagram block ────────────────────────────────────────────────────
+
+def _diagram_block(doc: Document, mermaid_code: str,
+                   primary_hex: str, secondary_rgb: RGBColor) -> None:
+    """
+    Render *mermaid_code* and insert the resulting PNG centred in the document.
+
+    If the rendering service is unreachable or returns an error, falls back to
+    a shaded code block showing the raw Mermaid source with an explanatory note.
+    """
+    png_bytes: bytes | None = None
+    error_msg: str | None   = None
+
+    try:
+        from . import diagram_renderer
+        png_bytes = diagram_renderer.render(mermaid_code, primary_hex)
+    except Exception as exc:
+        error_msg = str(exc)
+
+    if png_bytes:
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para.paragraph_format.space_before = Pt(8)
+        para.paragraph_format.space_after  = Pt(8)
+        para.add_run().add_picture(io.BytesIO(png_bytes), width=Inches(5.5))
+    else:
+        # Fallback: show a note + the raw Mermaid code in a code block
+        note = doc.add_paragraph()
+        note.paragraph_format.space_before = Pt(4)
+        note.paragraph_format.space_after  = Pt(2)
+        note_run = note.add_run(
+            "[Diagrama no renderizado"
+            + (f": {error_msg}" if error_msg else "")
+            + " — código Mermaid:]"
+        )
+        note_run.font.italic    = True
+        note_run.font.size      = Pt(9)
+        note_run.font.color.rgb = _COLOR_GRAY
+        _code_block(doc, mermaid_code.splitlines(), secondary_rgb)
 
 
 # ── Cover page ────────────────────────────────────────────────────────
@@ -649,6 +699,18 @@ def convert(
 
         if i == title_line_idx:
             i += 1
+            continue
+
+        # ── Diagram block ────────────────────────────────────────────
+        if line.strip() == "[DIAGRAM]":
+            diagram_lines: list[str] = []
+            i += 1
+            while i < n and lines[i].strip() != "[/DIAGRAM]":
+                diagram_lines.append(lines[i])
+                i += 1
+            _diagram_block(doc, "\n".join(diagram_lines),
+                           primary_hex, secondary_rgb)
+            i += 1  # skip [/DIAGRAM]
             continue
 
         # ── Fenced code block ────────────────────────────────────────

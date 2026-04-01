@@ -39,6 +39,29 @@ Pautas de redacción:
 - Las tablas son útiles para listar parámetros, variables de entorno o endpoints.
 - El tono es formal-técnico: directo, sin adornos, pero completo en el detalle."""
 
+    EXTRA_INSTRUCTIONS = """\
+Para la sección "Diagramas", genera entre 1 y 3 diagramas Mermaid que representen
+la arquitectura o los flujos más relevantes del repositorio (arquitectura de
+componentes, flujo de datos, secuencia de llamadas, etc.).
+
+Cada diagrama debe seguir esta estructura exacta:
+
+1. Un párrafo corto que explique qué representa el diagrama.
+2. El bloque del diagrama delimitado por las etiquetas [DIAGRAM] y [/DIAGRAM]:
+
+[DIAGRAM]
+<código Mermaid válido y completo>
+[/DIAGRAM]
+
+Reglas estrictas para los bloques de diagrama:
+- Usa ÚNICAMENTE las etiquetas [DIAGRAM] y [/DIAGRAM]. No uses ```mermaid.
+- El contenido dentro de las etiquetas debe ser código Mermaid puro y válido.
+- No incluyas el bloque %%{init: ...}%% — se añade automáticamente durante el procesado.
+- Los tipos de diagrama recomendados son: graph TD, graph LR, sequenceDiagram,
+  classDiagram o flowchart TD, según lo que mejor describa el sistema.
+- Basa los diagramas en el código real: módulos, rutas, clases o funciones que
+  realmente existan en el repositorio."""
+
     SECTIONS = [
         "Resumen del proyecto",
         "Arquitectura general del sistema",
@@ -49,6 +72,6 @@ Pautas de redacción:
         "Instrucciones de instalación y configuración",
         "Variables de entorno",
         "API / endpoints (si aplica)",
-        "Diagramas de flujo o arquitectura (descripción textual)",
+        "Diagramas",
         "Notas técnicas y decisiones de diseño",
     ]
