@@ -215,9 +215,10 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
 
     # ── 4. Generate Markdown via LLM ─────────────────────────────────
     model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
+    yield _log(f"LLM API: {model_name}")
     yield _log("Construyendo prompt...")
     yield _progress(40)
-    yield _log(f"Llamando al modelo {model_name}. Esto puede tardar unos segundos...")
+    yield _log("Generando documentación. Esto puede tardar unos segundos...")
 
     try:
         markdown = generator.generate(repo_scan, template_content)
