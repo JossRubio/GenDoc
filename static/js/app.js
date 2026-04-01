@@ -54,6 +54,15 @@ function setProgress(pct) {
   _progressCurrent = Math.min(100, Math.max(0, pct));
   ui.progressBar.style.width = `${_progressCurrent}%`;
   ui.progressPct.textContent = `${Math.round(_progressCurrent)}%`;
+
+  const el = ui.progressPct;
+  el.classList.remove("pct-running", "pct-done");
+  if (_progressCurrent >= 100) {
+    el.classList.add("pct-done");
+  } else if (_progressCurrent >= 1) {
+    el.classList.add("pct-running");
+  }
+  // 0 % → no class → inherits --gd-text (black / white per theme)
 }
 
 function setProgressTarget(pct) {

@@ -321,11 +321,27 @@ body {
 .gd-progress-pct {
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--gd-primary);
+  color: var(--gd-text);
   font-variant-numeric: tabular-nums;
   transition: color 0.3s;
   min-width: 2.8rem;
   text-align: right;
+}
+
+.gd-progress-pct.pct-running {
+  color: #92680a;   /* dark amber — legible on light background */
+}
+
+.gd-progress-pct.pct-done {
+  color: #15803d;   /* dark green — legible on light background */
+}
+
+[data-theme="dark"] .gd-progress-pct.pct-running {
+  color: #fbbf24;   /* bright amber — legible on dark background */
+}
+
+[data-theme="dark"] .gd-progress-pct.pct-done {
+  color: #4ade80;   /* bright green — legible on dark background */
 }
 
 .gd-progress-wrap {
