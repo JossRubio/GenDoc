@@ -46,6 +46,10 @@ class BaseGenerator:
     FILE_SUFFIX:  str       = ""
     SECTIONS:     list[str] = []
 
+    # Each subclass defines its own writing persona: who is the audience,
+    # what tone to use, and what to emphasise or avoid.
+    PERSONA: str = ""
+
     # ── Prompt building ───────────────────────────────────────────────
 
     def build_prompt(
@@ -77,20 +81,27 @@ class BaseGenerator:
                 f"en el orden dado:\n{sections_block}"
             )
 
+        persona_block = (
+            f"## Tu rol y audiencia\n\n{self.PERSONA}\n\n"
+            if self.PERSONA else ""
+        )
+
         repo_context = ai_service.build_repo_context(repo_scan)
 
         return (
             "Eres un experto en documentación de software. "
-            "Tu tarea es generar documentación profesional, clara y detallada "
-            "en Markdown para el repositorio de código que se proporciona más abajo.\n\n"
+            "Tu tarea es generar documentación profesional en Markdown "
+            "para el repositorio de código que se proporciona más abajo.\n\n"
+            f"{persona_block}"
             f"{_FORMAT_INSTRUCTIONS}\n\n"
             "## Estructura del documento\n\n"
             f"{structure_instruction}\n\n"
-            "## Instrucciones adicionales\n\n"
-            "- Redacta en español.\n"
-            "- Sé preciso y basa cada afirmación en el código real del repositorio.\n"
-            "- No incluyas texto introductorio, aclaraciones ni explicaciones "
-            "fuera del documento.\n"
+            "## Instrucciones generales\n\n"
+            "- Redacta íntegramente en español.\n"
+            "- Basa cada afirmación en el código real del repositorio; "
+            "no inventes funcionalidades que no existan.\n"
+            "- No incluyas texto introductorio, aclaraciones ni comentarios "
+            "fuera del documento en sí.\n"
             "- Responde **únicamente** con el documento Markdown completo.\n\n"
             f"---\n\n{repo_context}"
         )

@@ -25,6 +25,20 @@ class TechnicalDocsGenerator(BaseGenerator):
     DISPLAY_NAME = "Documentación técnica"
     FILE_SUFFIX  = "documentacion_tecnica"
 
+    PERSONA = """\
+Estás redactando documentación técnica dirigida a desarrolladores de software,
+arquitectos de sistemas y equipos de operaciones. El lector tiene experiencia
+programando y está familiarizado con conceptos como APIs, dependencias, variables
+de entorno y patrones de diseño.
+
+Pautas de redacción:
+- Usa terminología técnica precisa; no simplifiques conceptos que el lector ya domina.
+- Describe el "cómo" y el "por qué" de las decisiones de implementación.
+- Incluye nombres reales de archivos, módulos, clases y funciones cuando sea relevante.
+- Usa bloques de código para ejemplos de configuración, comandos o fragmentos clave.
+- Las tablas son útiles para listar parámetros, variables de entorno o endpoints.
+- El tono es formal-técnico: directo, sin adornos, pero completo en el detalle."""
+
     SECTIONS = [
         "Resumen del proyecto",
         "Arquitectura general del sistema",

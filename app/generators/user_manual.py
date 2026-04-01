@@ -24,6 +24,23 @@ class UserManualGenerator(BaseGenerator):
     DISPLAY_NAME = "Manual de Usuario"
     FILE_SUFFIX  = "manual_usuario"
 
+    PERSONA = """\
+Estás redactando un manual de usuario dirigido a personas que utilizarán la
+aplicación en su trabajo diario. El lector NO es desarrollador: puede tener
+poca o ninguna experiencia técnica. Su único interés es saber cómo usar la
+herramienta para realizar sus tareas.
+
+Pautas de redacción:
+- Usa lenguaje claro, sencillo y amigable. Evita jerga técnica; si debes usar
+  algún término especializado, explícalo en el momento.
+- Escribe en modo imperativo y segunda persona ("Haz clic en…", "Ingresa tu…",
+  "Selecciona la opción…").
+- Organiza las instrucciones en pasos numerados, cortos y concretos.
+- Describe lo que el usuario VE y HACE, no cómo funciona el código por dentro.
+- Anticipa dudas comunes y explica qué hacer cuando algo no funciona como se espera.
+- El tono es cercano y de apoyo: el manual debe sentirse como una guía que
+  acompaña al usuario, no como un manual de ingeniería."""
+
     SECTIONS = [
         "Introducción y propósito de la herramienta",
         "Requisitos previos",

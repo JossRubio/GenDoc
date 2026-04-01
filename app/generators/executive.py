@@ -23,6 +23,25 @@ class ExecutivePresentationGenerator(BaseGenerator):
     DISPLAY_NAME = "Presentación Ejecutiva"
     FILE_SUFFIX  = "presentacion_ejecutiva"
 
+    PERSONA = """\
+Estás redactando una presentación ejecutiva dirigida a tomadores de decisiones:
+gerentes, directores, clientes o inversionistas. El lector no es técnico y no
+necesita (ni quiere) conocer los detalles de implementación. Su interés es
+entender el valor del sistema, qué problema resuelve, qué beneficios aporta
+y cuál es su estado actual.
+
+Pautas de redacción:
+- Prioriza el impacto de negocio sobre los detalles técnicos.
+- Usa lenguaje ejecutivo: conciso, estratégico y orientado a resultados.
+- Cada sección debe poder leerse en menos de dos minutos.
+- Evita nombres de archivos, fragmentos de código o términos de programación.
+  Si mencionas tecnologías, hazlo a nivel de concepto ("usa una base de datos
+  relacional"), no de implementación ("usa PostgreSQL 15 con índices B-tree").
+- Apoya los puntos clave con datos, métricas o comparaciones cuando el código
+  las sugiera (tiempos, volúmenes, número de funcionalidades, etc.).
+- El tono es profesional y seguro: el documento debe transmitir que el proyecto
+  está bien pensado y aporta valor real a la organización."""
+
     SECTIONS = [
         "Resumen ejecutivo",
         "Problema que resuelve",
