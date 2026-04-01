@@ -247,6 +247,127 @@ def _add_toc_hyperlink(para, text: str, anchor: str,
     para._p.append(hl)
 
 
+def _add_caption(doc: Document, elem_type: str, number: int,
+                 description: str, anchor_id: str, bk_id: int) -> None:
+    """
+    Add a styled caption paragraph below a table, code block or diagram.
+
+    Format:  <elem_type> <number>,  <description>
+    Example: Tabla 3,  Dependencias principales del proyecto
+    """
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    para.paragraph_format.space_before = Pt(2)
+    para.paragraph_format.space_after  = Pt(8)
+    run = para.add_run(f"{elem_type} {number},  {description}")
+    run.font.size      = Pt(9)
+    run.font.italic    = True
+    run.font.color.rgb = _COLOR_GRAY
+    _add_bookmark(para, anchor_id, bk_id)
+
+
+# ── Element pre-scan ──────────────────────────────────────────────────
+
+def _prescan_elements(
+    lines: list[str],
+    title_line_idx: int,
+    start_bk_id: int,
+) -> tuple[dict, list, int]:
+    """
+    Scan *lines* in document order to assign per-type sequential caption numbers
+    to every table, code block and diagram.
+
+    Each element type has its own independent counter (Tabla 1…N, Código 1…N,
+    Diagrama 1…N) so the numbers never overlap across types.
+
+    Returns
+    -------
+    caption_map : dict[int, tuple]
+        Keyed by the *element start line index*.
+        Value: (elem_type, description, number, anchor_id, bk_id)
+    table_toc_entries : list of (number, description, anchor_id)
+        Only Table entries, used to build the Índice de Tablas in the TOC.
+    next_bk_id : int
+        Next available bookmark ID (continues from start_bk_id).
+    """
+    caption_map: dict[int, tuple] = {}
+    table_toc_entries: list[tuple] = []
+
+    table_num   = 0
+    code_num    = 0
+    diagram_num = 0
+    bk_id       = start_bk_id
+    pending_desc: str | None = None   # description from the nearest [CAPTION:]
+
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        if i == title_line_idx:
+            i += 1
+            continue
+
+        line    = lines[i]
+        stripped = line.strip()
+
+        # ── [CAPTION:] tag ────────────────────────────────────────────
+        if stripped.startswith("[CAPTION:") and stripped.endswith("]"):
+            pending_desc = stripped[9:-1].strip()
+            i += 1
+            continue
+
+        # ── [DIAGRAM] block ───────────────────────────────────────────
+        if stripped == "[DIAGRAM]":
+            diagram_num += 1
+            bk_id       += 1
+            desc    = pending_desc or "Diagrama del sistema"
+            anchor  = f"diag_{diagram_num}"
+            caption_map[i] = ("Diagrama", desc, diagram_num, anchor, bk_id)
+            pending_desc = None
+            i += 1
+            while i < n and lines[i].strip() != "[/DIAGRAM]":
+                i += 1
+            i += 1          # skip [/DIAGRAM]
+            continue
+
+        # ── Markdown table block ──────────────────────────────────────
+        if "|" in line and stripped.startswith("|"):
+            first_i = i
+            while i < n and "|" in lines[i] and lines[i].strip().startswith("|"):
+                i += 1
+            table_num += 1
+            bk_id     += 1
+            desc   = pending_desc or "Datos tabulares"
+            anchor = f"tbl_{table_num}"
+            caption_map[first_i] = ("Tabla", desc, table_num, anchor, bk_id)
+            table_toc_entries.append((table_num, desc, anchor))
+            pending_desc = None
+            continue
+
+        # ── Fenced code block ─────────────────────────────────────────
+        if line.startswith("```"):
+            first_i = i
+            i += 1
+            while i < n and not lines[i].startswith("```"):
+                i += 1
+            i += 1          # skip closing ```
+            code_num += 1
+            bk_id    += 1
+            desc   = pending_desc or "Fragmento de código"
+            anchor = f"code_{code_num}"
+            caption_map[first_i] = ("Código", desc, code_num, anchor, bk_id)
+            pending_desc = None
+            continue
+
+        # ── Any other non-blank content clears pending ────────────────
+        if stripped and not stripped.startswith("#"):
+            pending_desc = None
+
+        i += 1
+
+    return caption_map, table_toc_entries, bk_id
+
+
 # ── Inline markup parser ──────────────────────────────────────────────
 
 _INLINE_RE = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|([^*`]+)", re.DOTALL)
@@ -467,15 +588,17 @@ def _add_toc_page(
     doc: Document,
     headings: list[tuple[int, str, str]],
     toc_title: str,
-    primary_rgb:   RGBColor,
-    primary_hex:   str,
-    secondary_rgb: RGBColor,
-    secondary_hex: str,
+    primary_rgb:       RGBColor,
+    primary_hex:       str,
+    secondary_rgb:     RGBColor,
+    secondary_hex:     str,
+    table_toc_entries: list[tuple[int, str, str]] | None = None,
 ) -> None:
     """
     Add a TOC/Agenda page after the cover page.
 
-    *headings* is a list of (level, text, anchor_id) for H1–H3 entries.
+    *headings* → (level, text, anchor_id) for H1–H3.
+    *table_toc_entries* → (number, description, anchor_id) for the Índice de Tablas.
     Each entry is a clickable internal hyperlink.
     A page break at the end forces body content onto the next page.
     """
@@ -489,11 +612,7 @@ def _add_toc_page(
     run.font.bold      = True
     run.font.color.rgb = primary_rgb
 
-    # ── Entries ──────────────────────────────────────────────────────
-    # Visual config per level:
-    #   level 1 → 0.00" indent, 11 pt (22 half-pts), bold, primary colour
-    #   level 2 → 0.30" indent, 10 pt (20 half-pts), normal, primary colour
-    #   level 3 → 0.55" indent,  9 pt (18 half-pts), normal, secondary colour
+    # ── Heading entries ───────────────────────────────────────────────
     _LEVEL_CFG = {
         1: (Inches(0.00), 22, True,  primary_hex),
         2: (Inches(0.30), 20, False, primary_hex),
@@ -509,6 +628,31 @@ def _add_toc_page(
         para.paragraph_format.space_before = Pt(2)
         para.paragraph_format.space_after  = Pt(2)
         _add_toc_hyperlink(para, text, anchor, hex_col, half_pts, bold)
+
+    # ── Índice de Tablas ──────────────────────────────────────────────
+    if table_toc_entries:
+        # Spacer
+        spacer = doc.add_paragraph()
+        spacer.paragraph_format.space_before = Pt(14)
+        spacer.paragraph_format.space_after  = Pt(8)
+        run_title = spacer.add_run("Índice de Tablas")
+        run_title.font.size      = Pt(13)
+        run_title.font.bold      = True
+        run_title.font.color.rgb = primary_rgb
+
+        for num, description, anchor in table_toc_entries:
+            para = doc.add_paragraph()
+            para.paragraph_format.left_indent  = Inches(0.20)
+            para.paragraph_format.space_before = Pt(2)
+            para.paragraph_format.space_after  = Pt(2)
+            _add_toc_hyperlink(
+                para,
+                f"Tabla {num},  {description}",
+                anchor,
+                primary_hex,
+                20,
+                False,
+            )
 
     # ── Page break → body starts on next page ────────────────────────
     _add_page_break(doc)
@@ -639,9 +783,7 @@ def convert(
     if not title:
         title = out.stem.replace("_", " ").title()
 
-    # ── Pre-scan all headings (H1–H3) for TOC + bookmarks ────────────
-    # heading_map : line_idx → (anchor_id, bookmark_id)
-    # toc_entries : list of (level, text, anchor_id) for TOC page
+    # ── Pre-scan 1: headings (for TOC links + body bookmarks) ────────
     heading_map: dict[int, tuple[str, int]] = {}
     toc_entries: list[tuple[int, str, str]] = []
     seen_anchors: dict[str, int] = {}
@@ -655,8 +797,7 @@ def convert(
             continue
         level = len(m.group(1))
         text  = m.group(2).strip()
-        # Build a Word-safe bookmark name (letters/digits/underscores, no leading digit)
-        slug = re.sub(r"[^\w]", "_", text)[:40].strip("_")
+        slug  = re.sub(r"[^\w]", "_", text)[:40].strip("_")
         if not slug or slug[0].isdigit():
             slug = "h_" + slug
         count = seen_anchors.get(slug, 0)
@@ -666,6 +807,11 @@ def convert(
         if level <= 3:
             toc_entries.append((level, text, anchor))
         bk_counter += 1
+
+    # ── Pre-scan 2: tables / code / diagrams (for captions + table TOC) ─
+    caption_map, table_toc_entries, bk_counter = _prescan_elements(
+        lines, title_line_idx, bk_counter
+    )
 
     # ── Cover page (section 1, vAlign=center) ────────────────────────
     _add_cover_page(doc, title, primary_rgb, secondary_rgb)
@@ -684,9 +830,10 @@ def convert(
 
     # ── TOC / Agenda page ────────────────────────────────────────────
     toc_title = "Agenda" if doc_type == "executive" else "Índice"
-    if toc_entries:
+    if toc_entries or table_toc_entries:
         _add_toc_page(doc, toc_entries, toc_title,
-                      primary_rgb, primary_hex, secondary_rgb, secondary_hex)
+                      primary_rgb, primary_hex, secondary_rgb, secondary_hex,
+                      table_toc_entries)
 
     # ── Process markdown body ─────────────────────────────────────────
     # first_h1 pre-filled: cover consumed the title H1, remaining H1s
@@ -701,8 +848,14 @@ def convert(
             i += 1
             continue
 
+        # ── [CAPTION:] tag — skip (already incorporated in caption_map) ──
+        if lines[i].strip().startswith("[CAPTION:") and lines[i].strip().endswith("]"):
+            i += 1
+            continue
+
         # ── Diagram block ────────────────────────────────────────────
         if line.strip() == "[DIAGRAM]":
+            diag_start    = i
             diagram_lines: list[str] = []
             i += 1
             while i < n and lines[i].strip() != "[/DIAGRAM]":
@@ -710,27 +863,38 @@ def convert(
                 i += 1
             _diagram_block(doc, "\n".join(diagram_lines),
                            primary_hex, secondary_rgb)
+            cap = caption_map.get(diag_start)
+            if cap:
+                _add_caption(doc, cap[0], cap[2], cap[1], cap[3], cap[4])
             i += 1  # skip [/DIAGRAM]
             continue
 
         # ── Fenced code block ────────────────────────────────────────
         if line.startswith("```"):
+            code_start  = i
             code_lines: list[str] = []
             i += 1
             while i < n and not lines[i].startswith("```"):
                 code_lines.append(lines[i])
                 i += 1
             _code_block(doc, code_lines, secondary_rgb)
+            cap = caption_map.get(code_start)
+            if cap:
+                _add_caption(doc, cap[0], cap[2], cap[1], cap[3], cap[4])
             i += 1
             continue
 
         # ── Markdown table ───────────────────────────────────────────
         if "|" in line and line.strip().startswith("|"):
+            tbl_start  = i
             table_rows: list[str] = []
             while i < n and "|" in lines[i] and lines[i].strip().startswith("|"):
                 table_rows.append(lines[i])
                 i += 1
             _table_block(doc, table_rows, primary_rgb, primary_hex, secondary_rgb)
+            cap = caption_map.get(tbl_start)
+            if cap:
+                _add_caption(doc, cap[0], cap[2], cap[1], cap[3], cap[4])
             continue
 
         # ── Headings ─────────────────────────────────────────────────

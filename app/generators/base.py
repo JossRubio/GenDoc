@@ -37,7 +37,18 @@ Usa **exactamente** estas convenciones Markdown:
 - `###` para subsecciones cuando sea necesario
 - Listas con `-` o `*` cuando corresponda
 - Tablas en sintaxis Markdown nativa con `|` cuando corresponda
-- Bloques de código con triple backtick y el lenguaje especificado"""
+- Bloques de código con triple backtick y el lenguaje especificado
+
+Antes de **cada tabla**, **bloque de código** y **diagrama** incluye, en la línea
+inmediatamente anterior (sin líneas en blanco entre el tag y el elemento), la etiqueta:
+
+  [CAPTION: breve descripción del contenido]
+
+La descripción debe ser concisa (máximo 10 palabras) y explicar qué representa el
+elemento. Ejemplos válidos:
+  [CAPTION: Dependencias principales del proyecto]
+  [CAPTION: Comando de instalación en entorno virtual]
+  [CAPTION: Arquitectura de componentes del sistema]"""
 
 
 class BaseGenerator:
