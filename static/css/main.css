@@ -570,6 +570,89 @@ body {
   }
 }
 
+/* ── Sections panel ──────────────────────────────────────────────── */
+
+.gd-sections-hint {
+  font-size: 0.74rem;
+  color: var(--gd-muted);
+  margin-bottom: 0.6rem;
+  line-height: 1.45;
+  transition: color 0.25s;
+}
+
+.gd-sections-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.gd-sections-sep {
+  color: var(--gd-muted);
+  font-size: 0.75rem;
+}
+
+.gd-sections-toggle-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.72rem;
+  color: var(--gd-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gd-sections-toggle-btn:hover {
+  opacity: 0.75;
+}
+
+.gd-sections-panel {
+  background: var(--gd-log-bg);
+  border: 1px solid var(--gd-log-border);
+  border-radius: var(--gd-radius);
+  padding: 0.5rem 0.75rem;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  transition: background 0.25s, border-color 0.25s;
+}
+
+.gd-section-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.gd-section-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gd-section-cb {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--gd-primary);
+  cursor: pointer;
+}
+
+.gd-section-title {
+  font-size: 0.8rem;
+  color: var(--gd-log-color);
+  line-height: 1.3;
+  transition: color 0.25s;
+}
+
+[data-theme="dark"] .gd-sections-panel {
+  background: var(--gd-log-bg);
+  border-color: var(--gd-log-border);
+}
+
 /* Responsive tweaks */
 @media (max-width: 540px) {
   .gd-card {

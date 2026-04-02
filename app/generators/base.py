@@ -71,9 +71,22 @@ class BaseGenerator:
         self,
         repo_scan: RepoScan,
         template_content: str | None = None,
+        locked_sections: list[str] | None = None,
     ) -> str:
         """
         Assemble the full prompt for this document type.
+
+        Parameters
+        ----------
+        repo_scan        : RepoScan
+            Scanned repository data.
+        template_content : str | None
+            Raw text of a user-supplied template document.
+        locked_sections  : list[str] | None
+            Section titles that must be reproduced verbatim from the template
+            without any modification. Only meaningful when *template_content*
+            is provided. Sections not in this list will be generated/adapted
+            by the LLM.
 
         Override this method in a subclass only when the default
         structure is not appropriate for that document type.
@@ -108,6 +121,20 @@ class BaseGenerator:
             if self.EXTRA_INSTRUCTIONS else ""
         )
 
+        # Build the locked-sections block only when applicable
+        locked_block = ""
+        if template_content and locked_sections:
+            locked_list = "\n".join(f"  - {s}" for s in locked_sections)
+            locked_block = (
+                "## Secciones que NO debes modificar\n\n"
+                "Las siguientes secciones deben copiarse **exactamente** como "
+                "aparecen en la plantilla, sin ninguna modificación, adición ni "
+                "eliminación de contenido:\n\n"
+                f"{locked_list}\n\n"
+                "El resto de secciones sí deben generarse o adaptarse según el "
+                "código del repositorio.\n\n"
+            )
+
         return (
             "Eres un experto en documentación de software. "
             "Tu tarea es generar documentación profesional en Markdown "
@@ -116,6 +143,7 @@ class BaseGenerator:
             f"{_FORMAT_INSTRUCTIONS}\n\n"
             "## Estructura del documento\n\n"
             f"{structure_instruction}\n\n"
+            f"{locked_block}"
             "## Instrucciones generales\n\n"
             "- Redacta íntegramente en español.\n"
             "- Basa cada afirmación en el código real del repositorio; "
@@ -133,10 +161,16 @@ class BaseGenerator:
         self,
         repo_scan: RepoScan,
         template_content: str | None = None,
+        locked_sections: list[str] | None = None,
     ) -> str:
         """
         Build the prompt for this document type, send it to Gemini, and
         return the response as a Markdown string.
+
+        Parameters
+        ----------
+        locked_sections : list[str] | None
+            Section titles the LLM must reproduce verbatim from the template.
 
         Raises
         ------
@@ -144,7 +178,7 @@ class BaseGenerator:
         RuntimeError — API / network / response errors.
         """
         try:
-            prompt = self.build_prompt(repo_scan, template_content)
+            prompt = self.build_prompt(repo_scan, template_content, locked_sections)
         except Exception as exc:
             raise RuntimeError(
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"

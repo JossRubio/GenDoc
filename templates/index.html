@@ -92,6 +92,23 @@
         </div>
       </div>
 
+      <!-- ── Secciones de la plantilla ──────────────────────── -->
+      <div id="sectionsPanelWrap" class="mb-4" style="display:none;">
+        <div class="gd-label d-flex align-items-center justify-content-between">
+          <span>Secciones detectadas en la plantilla</span>
+          <div class="gd-sections-toggle-row">
+            <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn">Seleccionar todo</button>
+            <span class="gd-sections-sep">·</span>
+            <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn">Deseleccionar todo</button>
+          </div>
+        </div>
+        <div class="gd-sections-hint">
+          Marca las secciones que deseas que el sistema <strong>edite o genere</strong>.
+          Las secciones sin marcar se copiarán exactamente desde la plantilla.
+        </div>
+        <div id="sectionsList" class="gd-sections-panel"></div>
+      </div>
+
       <!-- ── Tipo de documento ────────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">Tipo de documento <span style="color:#ef4444">*</span></div>

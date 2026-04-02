@@ -71,6 +71,61 @@ def browse_file() -> str | None:
     return path or None
 
 
+# ── Template section extractor ────────────────────────────────────────
+
+def extract_template_sections(template_path: str) -> tuple[list[str], str | None]:
+    """
+    Read *template_path* and return a list of detected section headings.
+
+    Returns (sections, error_message).  On success error_message is None.
+    Sections are returned in document order; duplicates are removed while
+    preserving order.
+
+    Supported formats
+    -----------------
+    .md / .txt  — Markdown headings (lines starting with one or more '#')
+    .docx       — Paragraphs whose Word style name begins with "Heading"
+    """
+    p = Path(template_path)
+
+    if not p.exists() or not p.is_file():
+        return [], f"No se encontró el archivo: {template_path}"
+
+    ext = p.suffix.lower()
+
+    if ext == ".docx":
+        try:
+            from docx import Document as _Document
+            wdoc = _Document(str(p))
+            seen: list[str] = []
+            for para in wdoc.paragraphs:
+                style_name = (para.style.name or "").lower()
+                text = para.text.strip()
+                if style_name.startswith("heading") and text and text not in seen:
+                    seen.append(text)
+            return seen, None
+        except Exception as exc:
+            return [], f"No se pudo leer el archivo .docx: {exc}"
+
+    # .md / .txt — detect Markdown headings
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return [], f"No se pudo leer el archivo: {exc}"
+
+    import re
+    heading_re = re.compile(r"^#{1,4}\s+(.+)", re.MULTILINE)
+    seen_set: set[str] = set()
+    sections: list[str] = []
+    for m in heading_re.finditer(text):
+        title = m.group(1).strip()
+        if title and title not in seen_set:
+            seen_set.add(title)
+            sections.append(title)
+
+    return sections, None
+
+
 # ── Template reader ───────────────────────────────────────────────────
 
 def _read_template(template_path: str) -> tuple[str | None, str | None]:
@@ -121,6 +176,7 @@ def generate_documentation_stream(
     doc_type: str = DEFAULT_DOC_TYPE,
     primary_color: str | None = None,
     secondary_color: str | None = None,
+    locked_sections: list[str] | None = None,
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -134,7 +190,8 @@ def generate_documentation_stream(
     # Top-level guard: catch any bug we didn't anticipate so the stream
     # always closes cleanly instead of leaving the browser hanging.
     try:
-        yield from _run(repo_path, template_path, doc_type, primary_color, secondary_color)
+        yield from _run(repo_path, template_path, doc_type, primary_color,
+                        secondary_color, locked_sections)
     except Exception as exc:
         yield _error(
             f"Error interno inesperado: {exc}. "
@@ -143,7 +200,8 @@ def generate_documentation_stream(
 
 
 def _run(repo_path: str, template_path: str | None, doc_type: str,
-         primary_color: str | None, secondary_color: str | None):
+         primary_color: str | None, secondary_color: str | None,
+         locked_sections: list[str] | None = None):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -221,7 +279,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _log("Generando documentación. Esto puede tardar unos segundos...")
 
     try:
-        markdown = generator.generate(repo_scan, template_content)
+        markdown = generator.generate(repo_scan, template_content, locked_sections)
     except ValueError as exc:
         # Config errors: missing/invalid API key, empty model name
         yield _error(f"Error de configuración: {exc}")

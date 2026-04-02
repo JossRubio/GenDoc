@@ -6,7 +6,7 @@ from flask import (
     request, send_file, stream_with_context,
 )
 
-from .services import browse_folder, browse_file, generate_documentation_stream
+from .services import browse_folder, browse_file, generate_documentation_stream, extract_template_sections
 
 main = Blueprint("main", __name__)
 
@@ -32,6 +32,21 @@ def api_browse_file():
     return jsonify({"path": path})
 
 
+@main.route("/api/template/sections", methods=["POST"])
+def api_template_sections():
+    body          = request.get_json(silent=True) or {}
+    template_path = (body.get("template_path") or "").strip()
+
+    if not template_path:
+        return jsonify({"sections": [], "error": "No se proporcionó ruta de plantilla."}), 400
+
+    sections, error = extract_template_sections(template_path)
+    if error:
+        return jsonify({"sections": [], "error": error}), 200  # non-fatal; caller shows warning
+
+    return jsonify({"sections": sections})
+
+
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
     body            = request.get_json(silent=True) or {}
@@ -40,6 +55,10 @@ def api_generate():
     doc_type        = (body.get("doc_type")         or "").strip() or None
     primary_color   = (body.get("primary_color")   or "").strip() or None
     secondary_color = (body.get("secondary_color") or "").strip() or None
+    locked_sections = body.get("locked_sections")  # list[str] | None
+
+    if not isinstance(locked_sections, list):
+        locked_sections = None
 
     if not repo_path:
         def immediate_error():
@@ -48,7 +67,8 @@ def api_generate():
 
     def event_stream():
         for event in generate_documentation_stream(repo_path, template_path, doc_type,
-                                                    primary_color, secondary_color):
+                                                    primary_color, secondary_color,
+                                                    locked_sections):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

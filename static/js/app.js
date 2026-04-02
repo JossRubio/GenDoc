@@ -13,23 +13,27 @@
 // ── UI refs ──────────────────────────────────────────────────────────
 
 const ui = {
-  repoInput:        document.getElementById("repoPath"),
-  templateInput:    document.getElementById("templatePath"),
-  btnBrowseRepo:    document.getElementById("btnBrowseRepo"),
-  btnBrowseTpl:     document.getElementById("btnBrowseTemplate"),
-  btnGenerate:      document.getElementById("btnGenerate"),
-  logArea:          document.getElementById("logArea"),
-  progressBar:      document.getElementById("progressBar"),
-  themeToggle:      document.getElementById("themeToggle"),
-  docTypeInputs:    document.querySelectorAll('input[name="docType"]'),
-  progressWrap:     document.getElementById("progressWrap"),
-  progressPct:      document.getElementById("progressPct"),
-  btnDownload:      document.getElementById("btnDownload"),
-  btnDownloadLabel: document.getElementById("btnDownloadLabel"),
-  statusDot:        document.getElementById("statusDot"),
-  statusText:       document.getElementById("statusText"),
-  colorPrimary:     document.getElementById("colorPrimary"),
-  colorSecondary:   document.getElementById("colorSecondary"),
+  repoInput:              document.getElementById("repoPath"),
+  templateInput:          document.getElementById("templatePath"),
+  btnBrowseRepo:          document.getElementById("btnBrowseRepo"),
+  btnBrowseTpl:           document.getElementById("btnBrowseTemplate"),
+  btnGenerate:            document.getElementById("btnGenerate"),
+  logArea:                document.getElementById("logArea"),
+  progressBar:            document.getElementById("progressBar"),
+  themeToggle:            document.getElementById("themeToggle"),
+  docTypeInputs:          document.querySelectorAll('input[name="docType"]'),
+  progressWrap:           document.getElementById("progressWrap"),
+  progressPct:            document.getElementById("progressPct"),
+  btnDownload:            document.getElementById("btnDownload"),
+  btnDownloadLabel:       document.getElementById("btnDownloadLabel"),
+  statusDot:              document.getElementById("statusDot"),
+  statusText:             document.getElementById("statusText"),
+  colorPrimary:           document.getElementById("colorPrimary"),
+  colorSecondary:         document.getElementById("colorSecondary"),
+  sectionsPanelWrap:      document.getElementById("sectionsPanelWrap"),
+  sectionsList:           document.getElementById("sectionsList"),
+  btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
+  btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
 };
 
 // ── State ────────────────────────────────────────────────────────────
@@ -152,11 +156,102 @@ async function browseFile() {
     if (data.path) {
       ui.templateInput.value = data.path;
       log(`Plantilla seleccionada: ${data.path}`);
+      await loadTemplateSections(data.path);
     }
   } catch {
     log("No se pudo abrir el selector de archivo.", "error");
   }
 }
+
+// ── Template sections panel ──────────────────────────────────────────
+
+function clearSectionsPanel() {
+  ui.sectionsList.innerHTML = "";
+  ui.sectionsPanelWrap.style.display = "none";
+}
+
+function renderSectionsPanel(sections) {
+  ui.sectionsList.innerHTML = "";
+
+  if (!sections || sections.length === 0) {
+    ui.sectionsPanelWrap.style.display = "none";
+    return;
+  }
+
+  sections.forEach((title, idx) => {
+    const id = `sec-${idx}`;
+
+    const item = document.createElement("label");
+    item.className = "gd-section-item";
+    item.htmlFor   = id;
+
+    const checkbox = document.createElement("input");
+    checkbox.type    = "checkbox";
+    checkbox.id      = id;
+    checkbox.checked = true;                // checked = system will edit this section
+    checkbox.className = "gd-section-cb";
+    checkbox.dataset.section = title;
+
+    const text = document.createElement("span");
+    text.className   = "gd-section-title";
+    text.textContent = title;
+
+    item.appendChild(checkbox);
+    item.appendChild(text);
+    ui.sectionsList.appendChild(item);
+  });
+
+  ui.sectionsPanelWrap.style.display = "block";
+}
+
+/**
+ * Returns the list of section titles the user wants to LOCK (not edited).
+ * These are sections whose checkbox is unchecked.
+ */
+function getLockedSections() {
+  const checkboxes = ui.sectionsList.querySelectorAll(".gd-section-cb");
+  const locked = [];
+  checkboxes.forEach(cb => {
+    if (!cb.checked) locked.push(cb.dataset.section);
+  });
+  return locked.length > 0 ? locked : null;
+}
+
+async function loadTemplateSections(templatePath) {
+  clearSectionsPanel();
+  if (!templatePath) return;
+
+  try {
+    const resp = await fetch("/api/template/sections", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ template_path: templatePath }),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      log(`Plantilla: ${data.error}`, "warn");
+      return;
+    }
+
+    if (data.sections && data.sections.length > 0) {
+      renderSectionsPanel(data.sections);
+      log(`Secciones detectadas en la plantilla: ${data.sections.length}`);
+    } else {
+      log("No se detectaron secciones en la plantilla.", "warn");
+    }
+  } catch {
+    log("No se pudieron leer las secciones de la plantilla.", "warn");
+  }
+}
+
+// Select / deselect all
+ui.btnSelectAllSections.addEventListener("click", () => {
+  ui.sectionsList.querySelectorAll(".gd-section-cb").forEach(cb => cb.checked = true);
+});
+ui.btnDeselectAllSections.addEventListener("click", () => {
+  ui.sectionsList.querySelectorAll(".gd-section-cb").forEach(cb => cb.checked = false);
+});
 
 // ── SSE stream consumer ──────────────────────────────────────────────
 
@@ -249,11 +344,12 @@ async function generate() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        repo_path:       repoPath,
-        template_path:   templatePath,
-        doc_type:        selectedDocType(),
-        primary_color:   ui.colorPrimary.value,
-        secondary_color: ui.colorSecondary.value,
+        repo_path:        repoPath,
+        template_path:    templatePath,
+        doc_type:         selectedDocType(),
+        primary_color:    ui.colorPrimary.value,
+        secondary_color:  ui.colorSecondary.value,
+        locked_sections:  getLockedSections(),
       }),
     });
 
@@ -328,6 +424,10 @@ ui.repoInput.addEventListener("input", () => {
   const path = ui.repoInput.value.trim();
   setButtonState(path.length > 0);
   updateDownloadButton(path);
+});
+
+ui.templateInput.addEventListener("input", () => {
+  if (!ui.templateInput.value.trim()) clearSectionsPanel();
 });
 
 // ── Init ─────────────────────────────────────────────────────────────
