@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import io
+import itertools
 import re
 import struct
 import zlib
@@ -51,6 +52,15 @@ _DEFAULT_SECONDARY = "#287A5F"
 _COLOR_GRAY  = RGBColor(0x60, 0x60, 0x60)
 _COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 _COLOR_CODE_BG = "F0F0F5"
+
+# Counter for unique SVG part names within the OPC package
+_svg_counter = itertools.count(1)
+
+# Namespace constants used for SVG embedding
+_NS_ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+_NS_R    = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_NS_A    = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
 
 def _hex_to_rgb(hex_color: str) -> RGBColor:
@@ -468,29 +478,116 @@ def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
 
 # ── Diagram block ────────────────────────────────────────────────────
 
+def _inject_svg_into_inline(inline_shape, svg_bytes: bytes, doc: Document) -> None:
+    """
+    Extend an existing inline picture with an SVG alternative.
+
+    Word 2016+ will display the SVG (vector, crisp at any zoom) and use the
+    already-embedded PNG only as a fallback for older viewers.
+    Users can right-click the diagram → "Convert to Shapes" to get fully
+    editable native Word drawing objects.
+
+    Parameters
+    ----------
+    inline_shape : docx.shape.InlineShape
+        The result of ``run.add_picture()``.
+    svg_bytes    : bytes
+        Raw SVG data to embed.
+    doc          : Document
+        The parent document (needed to register the new relationship).
+    """
+    from docx.opc.part import Part as OpcPart
+
+    idx = next(_svg_counter)
+    svg_part = OpcPart(
+        f"/word/media/diagram_svg_{idx}.svg",
+        "image/svg+xml",
+        svg_bytes,
+        doc.part.package,
+    )
+    rId_svg = doc.part.relate_to(svg_part, _REL_IMAGE)
+
+    # Navigate wp:inline → a:graphic → a:graphicData → pic:pic → pic:blipFill → a:blip
+    inline_el = inline_shape._inline
+    graphic   = inline_el.find(qn("a:graphic"))
+    if graphic is None:
+        return
+    graphic_data = graphic.find(qn("a:graphicData"))
+    if graphic_data is None:
+        return
+    pic_el = graphic_data.find(qn("pic:pic"))
+    if pic_el is None:
+        return
+    blip_fill = pic_el.find(qn("pic:blipFill"))
+    if blip_fill is None:
+        return
+    blip = blip_fill.find(qn("a:blip"))
+    if blip is None:
+        return
+
+    # Build: <a:extLst><a:ext uri="…"><asvg:svgBlip r:embed="rId"/></a:ext></a:extLst>
+    from lxml import etree
+    ext_xml = (
+        f'<a:ext xmlns:a="{_NS_A}" '
+        f'uri="{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}">'
+        f'<asvg:svgBlip xmlns:asvg="{_NS_ASVG}" '
+        f'xmlns:r="{_NS_R}" '
+        f'r:embed="{rId_svg}"/>'
+        f'</a:ext>'
+    )
+    ext_el = etree.fromstring(ext_xml)
+
+    ext_lst = blip.find(qn("a:extLst"))
+    if ext_lst is None:
+        ext_lst = OxmlElement("a:extLst")
+        blip.append(ext_lst)
+    ext_lst.append(ext_el)
+
+
 def _diagram_block(doc: Document, mermaid_code: str,
                    primary_hex: str, secondary_rgb: RGBColor) -> None:
     """
-    Render *mermaid_code* and insert the resulting PNG centred in the document.
+    Render *mermaid_code* and insert a vector diagram centred in the document.
 
-    If the rendering service is unreachable or returns an error, falls back to
-    a shaded code block showing the raw Mermaid source with an explanatory note.
+    Strategy
+    --------
+    1. Fetch both SVG and PNG from mermaid.ink.
+    2. Insert the PNG via ``add_picture`` (ensures compatibility with all Word
+       versions), then inject the SVG as an alternative via ``asvg:svgBlip``.
+       Word 2016+ renders the SVG; older viewers fall back to the PNG.
+    3. If only PNG is available, insert it without the SVG extension.
+    4. If neither is available, fall back to a shaded code block.
     """
+    from . import diagram_renderer
+
     png_bytes: bytes | None = None
+    svg_bytes: bytes | None = None
     error_msg: str | None   = None
 
     try:
-        from . import diagram_renderer
         png_bytes = diagram_renderer.render(mermaid_code, primary_hex)
     except Exception as exc:
         error_msg = str(exc)
+
+    if png_bytes:
+        try:
+            svg_bytes = diagram_renderer.render_svg(mermaid_code, primary_hex)
+        except Exception:
+            pass  # SVG is optional — PNG alone is still acceptable
 
     if png_bytes:
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         para.paragraph_format.space_before = Pt(8)
         para.paragraph_format.space_after  = Pt(8)
-        para.add_run().add_picture(io.BytesIO(png_bytes), width=Inches(5.5))
+        inline_shape = para.add_run().add_picture(
+            io.BytesIO(png_bytes), width=Inches(5.5)
+        )
+        if svg_bytes:
+            try:
+                _inject_svg_into_inline(inline_shape, svg_bytes, doc)
+            except Exception:
+                pass  # SVG injection failure must never break the document
     else:
         # Fallback: show a note + the raw Mermaid code in a code block
         note = doc.add_paragraph()
