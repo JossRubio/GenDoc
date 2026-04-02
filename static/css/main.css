@@ -205,6 +205,13 @@ body {
   font-size: 0.76rem;
 }
 
+/* Disabled state — when a template is active */
+.gd-segment--disabled {
+  opacity: 0.42;
+  pointer-events: none;
+  user-select: none;
+}
+
 @media (max-width: 480px) {
   .gd-segment {
     grid-template-columns: 1fr;

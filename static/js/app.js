@@ -132,6 +132,12 @@ function setButtonState(enabled) {
   ui.btnGenerate.disabled = !enabled || isRunning;
 }
 
+function setDocTypeEnabled(enabled) {
+  ui.docTypeInputs.forEach(input => { input.disabled = !enabled; });
+  const wrap = document.querySelector(".gd-segment");
+  if (wrap) wrap.classList.toggle("gd-segment--disabled", !enabled);
+}
+
 // ── Browse handlers ──────────────────────────────────────────────────
 
 async function browseFolder() {
@@ -156,6 +162,7 @@ async function browseFile() {
     if (data.path) {
       ui.templateInput.value = data.path;
       log(`Plantilla seleccionada: ${data.path}`);
+      setDocTypeEnabled(false);
       await loadTemplateSections(data.path);
     }
   } catch {
@@ -427,7 +434,9 @@ ui.repoInput.addEventListener("input", () => {
 });
 
 ui.templateInput.addEventListener("input", () => {
-  if (!ui.templateInput.value.trim()) clearSectionsPanel();
+  const hasTemplate = ui.templateInput.value.trim().length > 0;
+  setDocTypeEnabled(!hasTemplate);
+  if (!hasTemplate) clearSectionsPanel();
 });
 
 // ── Init ─────────────────────────────────────────────────────────────
