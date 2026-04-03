@@ -102,20 +102,40 @@ def _friendly_api_error(exc: object) -> str:
     return f"Error de la API de Gemini ({code}): {exc}"
 
 
+# ── Fallback model chain ──────────────────────────────────────────────
+
+# HTTP codes that indicate a model is unavailable or rate-limited.
+# For these the next model in the fallback chain is tried automatically.
+# Auth errors (401, 403) are NOT retried — switching models won't fix them.
+_RETRYABLE_CODES = {404, 429, 503}
+
+_FALLBACK_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-2.5-flash",
+]
+
+
 # ── Public API ────────────────────────────────────────────────────────
 
 def call_gemini(prompt: str) -> str:
     """
     Send *prompt* to Gemini and return the response as a Markdown string.
 
-    Configuration is read from environment variables:
-        LLM_API_KEY  — Google AI Studio API key (required).
-        LLM_MODEL    — model identifier (default: ``gemini-2.5-flash``).
+    The primary model is read from ``LLM_MODEL`` in the environment.
+    If that model returns a retryable error (404, 429, 503) the call is
+    retried with each model in ``_FALLBACK_MODELS`` in order until one
+    succeeds or all are exhausted.
+
+    Configuration
+    -------------
+    LLM_API_KEY  — Google AI Studio API key (required).
+    LLM_MODEL    — primary model identifier (default: ``gemini-3-flash-preview``).
 
     Raises
     ------
     ValueError   — Missing / invalid API key, empty model name.
-    RuntimeError — API errors, network failures, blocked or empty responses.
+    RuntimeError — All models failed, or a non-retryable API error occurred.
     """
     # ── Validate config ──────────────────────────────────────────────
     api_key = os.getenv("LLM_API_KEY", "").strip()
@@ -126,58 +146,84 @@ def call_gemini(prompt: str) -> str:
             "con tu clave de Google AI Studio."
         )
 
-    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
-    if not model_name:
+    primary = os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
+    if not primary:
         raise ValueError(
             "LLM_MODEL está vacío en el archivo .env. "
             "Usa un valor como 'gemini-2.5-flash'."
         )
 
-    # ── Call Gemini ──────────────────────────────────────────────────
+    # Build ordered list: primary first, then fallbacks (skip duplicates)
+    seen: set[str] = set()
+    models_to_try: list[str] = []
+    for m in [primary] + _FALLBACK_MODELS:
+        if m not in seen:
+            seen.add(m)
+            models_to_try.append(m)
+
+    # ── Call Gemini with fallback chain ──────────────────────────────
     # Imported here (not at module level) so the heavy SDK initialisation
     # only happens when the user actually clicks "Generar", not at startup.
     from google import genai                         # noqa: PLC0415
     from google.genai import errors as genai_errors  # noqa: PLC0415
 
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model=model_name, contents=prompt)
-    except genai_errors.ClientError as exc:
-        raise RuntimeError(_friendly_api_error(exc)) from exc
-    except genai_errors.ServerError as exc:
-        raise RuntimeError(_friendly_api_error(exc)) from exc
-    except (ConnectionError, TimeoutError, OSError) as exc:
-        raise RuntimeError(
-            "No se pudo conectar con la API de Gemini. "
-            f"Verifica tu conexión a internet. Detalle: {exc}"
-        ) from exc
-    except Exception as exc:
-        raise RuntimeError(f"Error inesperado al llamar al modelo: {exc}") from exc
+    client = genai.Client(api_key=api_key)
+    last_error: str = ""
 
-    # ── Validate response ────────────────────────────────────────────
-    # response.text raises ValueError when content is blocked by safety filters.
-    try:
-        text = response.text
-    except ValueError:
-        finish_reason = "desconocido"
+    for model_name in models_to_try:
         try:
-            finish_reason = str(response.candidates[0].finish_reason)
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"El modelo rechazó generar el contenido (motivo: {finish_reason}). "
-            "Esto ocurre cuando el contenido del repositorio activa los filtros "
-            "de seguridad. Intenta con un repositorio diferente."
-        )
-    except AttributeError as exc:
-        raise RuntimeError(
-            f"La respuesta del modelo tiene un formato inesperado: {exc}"
-        ) from exc
+            response = client.models.generate_content(
+                model=model_name, contents=prompt
+            )
+        except genai_errors.ClientError as exc:
+            code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+            if code in _RETRYABLE_CODES:
+                last_error = f"[{model_name}] {_friendly_api_error(exc)}"
+                continue  # try next model
+            raise RuntimeError(_friendly_api_error(exc)) from exc
+        except genai_errors.ServerError as exc:
+            code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+            if code in _RETRYABLE_CODES:
+                last_error = f"[{model_name}] {_friendly_api_error(exc)}"
+                continue
+            raise RuntimeError(_friendly_api_error(exc)) from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise RuntimeError(
+                "No se pudo conectar con la API de Gemini. "
+                f"Verifica tu conexión a internet. Detalle: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(f"Error inesperado al llamar al modelo: {exc}") from exc
 
-    if not text or not text.strip():
-        raise RuntimeError(
-            "El modelo devolvió una respuesta vacía. "
-            "Revisa que el repositorio contenga archivos con código legible."
-        )
+        # ── Validate response ────────────────────────────────────────
+        # response.text raises ValueError when content is blocked by safety filters.
+        try:
+            text = response.text
+        except ValueError:
+            finish_reason = "desconocido"
+            try:
+                finish_reason = str(response.candidates[0].finish_reason)
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"El modelo rechazó generar el contenido (motivo: {finish_reason}). "
+                "Esto ocurre cuando el contenido del repositorio activa los filtros "
+                "de seguridad. Intenta con un repositorio diferente."
+            )
+        except AttributeError as exc:
+            raise RuntimeError(
+                f"La respuesta del modelo tiene un formato inesperado: {exc}"
+            ) from exc
 
-    return text
+        if not text or not text.strip():
+            raise RuntimeError(
+                "El modelo devolvió una respuesta vacía. "
+                "Revisa que el repositorio contenga archivos con código legible."
+            )
+
+        return text
+
+    # All models in the chain exhausted
+    raise RuntimeError(
+        f"Todos los modelos disponibles fallaron. Último error: {last_error}"
+    )

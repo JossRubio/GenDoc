@@ -28,16 +28,14 @@ RuntimeError — if the output directory does not exist or cannot be written.
 
 from __future__ import annotations
 
-import concurrent.futures
 import copy
-import io
-import itertools
 import re
 import struct
 import zlib
 from datetime import datetime
 from pathlib import Path
 
+import io
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -53,15 +51,6 @@ _DEFAULT_SECONDARY = "#287A5F"
 _COLOR_GRAY  = RGBColor(0x60, 0x60, 0x60)
 _COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 _COLOR_CODE_BG = "F0F0F5"
-
-# Counter for unique SVG part names within the OPC package
-_svg_counter = itertools.count(1)
-
-# Namespace constants used for SVG embedding
-_NS_ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
-_NS_R    = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-_NS_A    = "http://schemas.openxmlformats.org/drawingml/2006/main"
-_REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
 
 def _hex_to_rgb(hex_color: str) -> RGBColor:
@@ -479,211 +468,15 @@ def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
 
 # ── Diagram block ────────────────────────────────────────────────────
 
-def _inject_svg_into_inline(inline_shape, svg_bytes: bytes, doc: Document) -> None:
-    """
-    Extend an existing inline picture with an SVG alternative.
-
-    Word 2016+ will display the SVG (vector, crisp at any zoom) and use the
-    already-embedded PNG only as a fallback for older viewers.
-    Users can right-click the diagram → "Convert to Shapes" to get fully
-    editable native Word drawing objects.
-
-    Parameters
-    ----------
-    inline_shape : docx.shape.InlineShape
-        The result of ``run.add_picture()``.
-    svg_bytes    : bytes
-        Raw SVG data to embed.
-    doc          : Document
-        The parent document (needed to register the new relationship).
-    """
-    from docx.opc.part import Part as OpcPart
-    from docx.opc.packuri import PackURI
-
-    idx = next(_svg_counter)
-    svg_part = OpcPart(
-        PackURI(f"/word/media/diagram_svg_{idx}.svg"),
-        "image/svg+xml",
-        svg_bytes,
-        doc.part.package,
-    )
-    rId_svg = doc.part.relate_to(svg_part, _REL_IMAGE)
-
-    # Navigate wp:inline → a:graphic → a:graphicData → pic:pic → pic:blipFill → a:blip
-    inline_el = inline_shape._inline
-    graphic   = inline_el.find(qn("a:graphic"))
-    if graphic is None:
-        return
-    graphic_data = graphic.find(qn("a:graphicData"))
-    if graphic_data is None:
-        return
-    pic_el = graphic_data.find(qn("pic:pic"))
-    if pic_el is None:
-        return
-    blip_fill = pic_el.find(qn("pic:blipFill"))
-    if blip_fill is None:
-        return
-    blip = blip_fill.find(qn("a:blip"))
-    if blip is None:
-        return
-
-    # Build: <a:extLst><a:ext uri="…"><asvg:svgBlip r:embed="rId"/></a:ext></a:extLst>
-    from lxml import etree
-    ext_xml = (
-        f'<a:ext xmlns:a="{_NS_A}" '
-        f'uri="{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}">'
-        f'<asvg:svgBlip xmlns:asvg="{_NS_ASVG}" '
-        f'xmlns:r="{_NS_R}" '
-        f'r:embed="{rId_svg}"/>'
-        f'</a:ext>'
-    )
-    ext_el = etree.fromstring(ext_xml)
-
-    ext_lst = blip.find(qn("a:extLst"))
-    if ext_lst is None:
-        ext_lst = OxmlElement("a:extLst")
-        blip.append(ext_lst)
-    ext_lst.append(ext_el)
-
-
-_UNSET = object()  # sentinel: diagram not in pre-fetch cache
-
-
-def _prefetch_diagrams(
-    lines: list[str],
-    primary_hex: str,
-    budget: float = 20.0,
-) -> dict[int, bytes | None]:
-    """
-    Scan *lines* for ALL [DIAGRAM]...[/DIAGRAM] blocks and pre-fetch PNG bytes
-    in parallel — including flowchart/graph types that will first attempt
-    build_native(), so that a fallback image is ready if native build fails.
-
-    All HTTP fetches run concurrently:
-      total wall-clock ≈ slowest single fetch (not sum of all).
-
-    Parameters
-    ----------
-    budget : float
-        Hard cap in seconds for the entire parallel fetch round.
-        Diagrams not completed within the budget get None (error note shown).
-
-    Returns
-    -------
-    dict mapping start-line-index → PNG bytes | None.
-    Every diagram block gets an entry so _diagram_block never needs to do
-    a synchronous HTTP call.
-    """
-    from . import diagram_renderer
-
-    tasks: list[tuple[int, str]] = []
-    i, n = 0, len(lines)
-    while i < n:
-        if lines[i].strip() == "[DIAGRAM]":
-            start = i
-            i += 1
-            code_lines = []
-            while i < n and lines[i].strip() != "[/DIAGRAM]":
-                code_lines.append(lines[i])
-                i += 1
-            tasks.append((start, "\n".join(code_lines)))
-        i += 1
-
-    if not tasks:
-        return {}
-
-    results: dict[int, bytes | None] = {}
-
-    def fetch(start_idx: int, code: str) -> tuple[int, bytes | None]:
-        try:
-            return start_idx, diagram_renderer.render(code, primary_hex)
-        except Exception:
-            return start_idx, None
-
-    # Do NOT use the `with` context manager — its __exit__ calls
-    # shutdown(wait=True) which blocks until every thread finishes,
-    # even after the budget expires.  On Windows, urllib DNS resolution
-    # ignores the socket timeout and can stall 30s+ per unreachable host.
-    # shutdown(wait=False) lets threads finish in the background without
-    # blocking the caller.
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(len(tasks), 1))
-    try:
-        futures = {pool.submit(fetch, idx, code): idx for idx, code in tasks}
-        done, not_done = concurrent.futures.wait(futures, timeout=budget)
-        for f in not_done:
-            results[futures[f]] = None
-        for f in done:
-            idx, png = f.result()
-            results[idx] = png
-    finally:
-        pool.shutdown(wait=False)  # return immediately; threads finish in background
-
-    return results
-
-
-def _diagram_block(doc: Document, mermaid_code: str,
-                   primary_hex: str, secondary_rgb: RGBColor,
-                   prefetched_png=_UNSET) -> None:
-    """
-    Insert a diagram into the document.
-
-    Strategy
-    --------
-    1. Try to build a native DrawingML diagram (editable shapes + connectors).
-       Supported for ``flowchart TD/LR`` and ``graph TD/LR`` only.
-    2. Use the pre-fetched PNG from the parallel pre-fetch in convert().
-       No synchronous HTTP calls are ever made here — if the pre-fetch
-       did not produce bytes the error note is shown immediately.
-    3. If all rendering fails, insert an error note and the raw Mermaid code
-       as a code block so the content is never silently lost.
-
-    Parameters
-    ----------
-    prefetched_png : bytes | None | _UNSET
-        bytes  → pre-fetched PNG; use directly.
-        None   → pre-fetch ran but failed; show error note.
-        _UNSET → diagram was not in the pre-fetch pass (should not happen
-                 in normal flow); show error note without any HTTP call.
-    """
-    from . import diagram_builder
-
-    # ── 1. Native DrawingML (editable) ──────────────────────────────
-    try:
-        built = diagram_builder.build_native(doc, mermaid_code, primary_hex)
-        if built:
-            return
-    except Exception:
-        pass  # fall through to image rendering
-
-    # ── 2. Use pre-fetched PNG (no HTTP here) ────────────────────────
-    png_bytes: bytes | None = None
-    error_msg: str | None   = None
-
-    if isinstance(prefetched_png, bytes):
-        png_bytes = prefetched_png
-    else:
-        error_msg = "diagrama no disponible (servicio externo no alcanzable o tiempo agotado)"
-
-    if png_bytes:
-        para = doc.add_paragraph()
-        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        para.paragraph_format.space_before = Pt(8)
-        para.paragraph_format.space_after  = Pt(8)
-        para.add_run().add_picture(io.BytesIO(png_bytes), width=Inches(5.5))
-        return
-
-    # ── 3. Fallback: error note + raw Mermaid code ───────────────────
-    note = doc.add_paragraph()
-    note.paragraph_format.space_before = Pt(4)
-    note.paragraph_format.space_after  = Pt(2)
-    note_run = note.add_run(
-        "[Diagrama no renderizado"
-        + (f": {error_msg}" if error_msg else "")
-        + " — código Mermaid:]"
-    )
-    note_run.font.italic    = True
-    note_run.font.size      = Pt(9)
-    note_run.font.color.rgb = _COLOR_GRAY
+def _diagram_block(doc: Document, mermaid_code: str, secondary_rgb: RGBColor) -> None:
+    """Insert a Mermaid diagram as a labeled code block."""
+    label = doc.add_paragraph()
+    label.paragraph_format.space_before = Pt(4)
+    label.paragraph_format.space_after  = Pt(2)
+    label_run = label.add_run("[Diagrama Mermaid:]")
+    label_run.font.italic    = True
+    label_run.font.size      = Pt(9)
+    label_run.font.color.rgb = _COLOR_GRAY
     _code_block(doc, mermaid_code.splitlines(), secondary_rgb)
 
 
@@ -993,10 +786,6 @@ def convert(
         lines, title_line_idx, bk_counter
     )
 
-    # ── Pre-fetch 3: parallel HTTP fetch for non-native diagrams ─────
-    # Budget = 45 s so the full convert() comfortably fits within 60 s.
-    diagram_cache = _prefetch_diagrams(lines, primary_hex, budget=12.0)
-
     # ── Cover page (section 1, vAlign=center) ────────────────────────
     _add_cover_page(doc, title, primary_rgb, secondary_rgb)
 
@@ -1045,9 +834,7 @@ def convert(
             while i < n and lines[i].strip() != "[/DIAGRAM]":
                 diagram_lines.append(lines[i])
                 i += 1
-            _diagram_block(doc, "\n".join(diagram_lines),
-                           primary_hex, secondary_rgb,
-                           prefetched_png=diagram_cache.get(diag_start, _UNSET))
+            _diagram_block(doc, "\n".join(diagram_lines), secondary_rgb)
             cap = caption_map.get(diag_start)
             if cap:
                 _add_caption(doc, cap[0], cap[2], cap[1], cap[3], cap[4])

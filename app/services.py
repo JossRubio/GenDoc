@@ -272,20 +272,24 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _progress(30)
 
     # ── 4. Generate Markdown via LLM ─────────────────────────────────
-    model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash").strip()
-    yield _log(f"LLM API: {model_name}")
-    yield _log("Construyendo prompt...")
+    try:
+        repo_name = Path(repo_path).resolve().name
+    except OSError:
+        repo_name = Path(repo_path).name
+
+    model_name = os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
+    yield _log(f"LLM API: {model_name} (con fallback automático)")
     yield _progress(40)
+
+    yield _log("Construyendo prompt...")
     yield _log("Generando documentación. Esto puede tardar unos segundos...")
 
     try:
         markdown = generator.generate(repo_scan, template_content, locked_sections)
     except ValueError as exc:
-        # Config errors: missing/invalid API key, empty model name
         yield _error(f"Error de configuración: {exc}")
         return
     except RuntimeError as exc:
-        # API errors, network failures, blocked content, empty response
         yield _error(f"Error al generar la documentación: {exc}")
         return
     except Exception as exc:
@@ -302,11 +306,6 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _progress(90)
 
     # ── 5. Resolve output path ───────────────────────────────────────
-    try:
-        repo_name = Path(repo_path).resolve().name
-    except OSError:
-        repo_name = Path(repo_path).name  # fallback: use path as-is without resolving
-
     output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
 
     try:
@@ -315,13 +314,13 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         yield _error(f"No se pudo determinar la ruta de salida: {exc}")
         return
 
-    yield _log("Markdown generado. Convirtiendo a documento Word...", level="success")
+    yield _log("Contenido generado. Convirtiendo a documento Word...", level="success")
     yield _progress(93)
 
     # ── 6. Convert Markdown → .docx ──────────────────────────────────
     import concurrent.futures as _cf
 
-    _CONVERT_TIMEOUT = 60  # seconds (12s prefetch + ~25s processing + margin)
+    _CONVERT_TIMEOUT = 60  # seconds
 
     kwargs: dict = {"doc_type": doc_type or "technical"}
     if primary_color:
