@@ -570,9 +570,8 @@ def _diagram_block(doc: Document, mermaid_code: str,
     except Exception:
         pass  # fall through to image rendering
 
-    # ── 2. Image rendering (PNG + optional SVG) ──────────────────────
+    # ── 2. Image rendering (PNG) ─────────────────────────────────────
     png_bytes: bytes | None = None
-    svg_bytes: bytes | None = None
     error_msg: str | None   = None
 
     try:
@@ -581,24 +580,11 @@ def _diagram_block(doc: Document, mermaid_code: str,
         error_msg = str(exc)
 
     if png_bytes:
-        try:
-            svg_bytes = diagram_renderer.render_svg(mermaid_code, primary_hex)
-        except Exception:
-            pass
-
-    if png_bytes:
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         para.paragraph_format.space_before = Pt(8)
         para.paragraph_format.space_after  = Pt(8)
-        inline_shape = para.add_run().add_picture(
-            io.BytesIO(png_bytes), width=Inches(5.5)
-        )
-        if svg_bytes:
-            try:
-                _inject_svg_into_inline(inline_shape, svg_bytes, doc)
-            except Exception:
-                pass
+        para.add_run().add_picture(io.BytesIO(png_bytes), width=Inches(5.5))
         return
 
     # ── 3. Fallback: error note + raw Mermaid code ───────────────────
