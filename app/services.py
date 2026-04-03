@@ -321,7 +321,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     # ── 6. Convert Markdown → .docx ──────────────────────────────────
     import concurrent.futures as _cf
 
-    _CONVERT_TIMEOUT = 60  # seconds
+    _CONVERT_TIMEOUT = 60  # seconds (12s prefetch + ~25s processing + margin)
 
     kwargs: dict = {"doc_type": doc_type or "technical"}
     if primary_color:

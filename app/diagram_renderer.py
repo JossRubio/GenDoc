@@ -22,7 +22,7 @@ import urllib.request
 
 _MERMAID_INK = "https://mermaid.ink"
 _KROKI       = "https://kroki.io"
-_TIMEOUT     = 8   # seconds per request
+_TIMEOUT     = 4   # seconds per request (connect + read)
 
 
 # ── Colour helpers ────────────────────────────────────────────────────

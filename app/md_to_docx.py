@@ -552,30 +552,31 @@ _UNSET = object()  # sentinel: diagram not in pre-fetch cache
 def _prefetch_diagrams(
     lines: list[str],
     primary_hex: str,
-    budget: float = 45.0,
+    budget: float = 20.0,
 ) -> dict[int, bytes | None]:
     """
-    Scan *lines* for all [DIAGRAM]...[/DIAGRAM] blocks and pre-fetch PNG bytes
-    for those that need HTTP (i.e. not handled by the native DrawingML builder).
+    Scan *lines* for ALL [DIAGRAM]...[/DIAGRAM] blocks and pre-fetch PNG bytes
+    in parallel — including flowchart/graph types that will first attempt
+    build_native(), so that a fallback image is ready if native build fails.
 
-    All HTTP fetches run concurrently so total wall-clock time ≈ slowest single
-    fetch instead of sum of all fetches.
+    All HTTP fetches run concurrently:
+      total wall-clock ≈ slowest single fetch (not sum of all).
 
     Parameters
     ----------
     budget : float
-        Maximum total seconds to wait for ALL fetches combined.
+        Hard cap in seconds for the entire parallel fetch round.
+        Diagrams not completed within the budget get None (error note shown).
 
     Returns
     -------
-    dict mapping start-line-index → PNG bytes (or None if fetch failed/timed out).
-    Only diagrams that require HTTP are included; native diagrams are absent so
-    that _diagram_block falls through to build_native() as normal.
+    dict mapping start-line-index → PNG bytes | None.
+    Every diagram block gets an entry so _diagram_block never needs to do
+    a synchronous HTTP call.
     """
-    from . import diagram_builder, diagram_renderer
+    from . import diagram_renderer
 
-    # Collect all diagram blocks that need HTTP
-    tasks: list[tuple[int, str]] = []  # (start_idx, mermaid_code)
+    tasks: list[tuple[int, str]] = []
     i, n = 0, len(lines)
     while i < n:
         if lines[i].strip() == "[DIAGRAM]":
@@ -585,9 +586,7 @@ def _prefetch_diagrams(
             while i < n and lines[i].strip() != "[/DIAGRAM]":
                 code_lines.append(lines[i])
                 i += 1
-            code = "\n".join(code_lines)
-            if not diagram_builder.is_supported(code):
-                tasks.append((start, code))
+            tasks.append((start, "\n".join(code_lines)))
         i += 1
 
     if not tasks:
@@ -601,19 +600,23 @@ def _prefetch_diagrams(
         except Exception:
             return start_idx, None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+    # Do NOT use the `with` context manager — its __exit__ calls
+    # shutdown(wait=True) which blocks until every thread finishes,
+    # even after the budget expires.  On Windows, urllib DNS resolution
+    # ignores the socket timeout and can stall 30s+ per unreachable host.
+    # shutdown(wait=False) lets threads finish in the background without
+    # blocking the caller.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(len(tasks), 1))
+    try:
         futures = {pool.submit(fetch, idx, code): idx for idx, code in tasks}
-        done, not_done = concurrent.futures.wait(
-            futures, timeout=budget, return_when=concurrent.futures.ALL_COMPLETED
-        )
-        # Cancel any still-running fetch that exceeded the budget
+        done, not_done = concurrent.futures.wait(futures, timeout=budget)
         for f in not_done:
-            f.cancel()
             results[futures[f]] = None
-
         for f in done:
             idx, png = f.result()
             results[idx] = png
+    finally:
+        pool.shutdown(wait=False)  # return immediately; threads finish in background
 
     return results
 
@@ -628,20 +631,21 @@ def _diagram_block(doc: Document, mermaid_code: str,
     --------
     1. Try to build a native DrawingML diagram (editable shapes + connectors).
        Supported for ``flowchart TD/LR`` and ``graph TD/LR`` only.
-    2. Use pre-fetched PNG bytes when available (parallel pre-fetch in convert()).
-       If the pre-fetch already failed (None), skip the HTTP call entirely.
-       If no pre-fetch result exists, fall back to a synchronous fetch.
+    2. Use the pre-fetched PNG from the parallel pre-fetch in convert().
+       No synchronous HTTP calls are ever made here — if the pre-fetch
+       did not produce bytes the error note is shown immediately.
     3. If all rendering fails, insert an error note and the raw Mermaid code
        as a code block so the content is never silently lost.
 
     Parameters
     ----------
     prefetched_png : bytes | None | _UNSET
-        _UNSET  → no pre-fetch was done; run synchronous HTTP as fallback.
-        None    → pre-fetch ran but failed; skip HTTP, go straight to error.
-        bytes   → pre-fetched PNG; use directly, no HTTP call needed.
+        bytes  → pre-fetched PNG; use directly.
+        None   → pre-fetch ran but failed; show error note.
+        _UNSET → diagram was not in the pre-fetch pass (should not happen
+                 in normal flow); show error note without any HTTP call.
     """
-    from . import diagram_builder, diagram_renderer
+    from . import diagram_builder
 
     # ── 1. Native DrawingML (editable) ──────────────────────────────
     try:
@@ -651,21 +655,14 @@ def _diagram_block(doc: Document, mermaid_code: str,
     except Exception:
         pass  # fall through to image rendering
 
-    # ── 2. Resolve PNG bytes ─────────────────────────────────────────
+    # ── 2. Use pre-fetched PNG (no HTTP here) ────────────────────────
     png_bytes: bytes | None = None
     error_msg: str | None   = None
 
-    if prefetched_png is not _UNSET:
-        # Result already known from parallel pre-fetch
+    if isinstance(prefetched_png, bytes):
         png_bytes = prefetched_png
-        if png_bytes is None:
-            error_msg = "tiempo de espera agotado o servicio no disponible"
     else:
-        # No pre-fetch: synchronous fallback (should rarely happen)
-        try:
-            png_bytes = diagram_renderer.render(mermaid_code, primary_hex)
-        except Exception as exc:
-            error_msg = str(exc)
+        error_msg = "diagrama no disponible (servicio externo no alcanzable o tiempo agotado)"
 
     if png_bytes:
         para = doc.add_paragraph()
@@ -998,7 +995,7 @@ def convert(
 
     # ── Pre-fetch 3: parallel HTTP fetch for non-native diagrams ─────
     # Budget = 45 s so the full convert() comfortably fits within 60 s.
-    diagram_cache = _prefetch_diagrams(lines, primary_hex, budget=45.0)
+    diagram_cache = _prefetch_diagrams(lines, primary_hex, budget=12.0)
 
     # ── Cover page (section 1, vAlign=center) ────────────────────────
     _add_cover_page(doc, title, primary_rgb, secondary_rgb)
