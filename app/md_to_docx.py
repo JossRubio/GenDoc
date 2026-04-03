@@ -28,6 +28,7 @@ RuntimeError — if the output directory does not exist or cannot be written.
 
 from __future__ import annotations
 
+import concurrent.futures
 import copy
 import io
 import itertools
@@ -545,8 +546,81 @@ def _inject_svg_into_inline(inline_shape, svg_bytes: bytes, doc: Document) -> No
     ext_lst.append(ext_el)
 
 
+_UNSET = object()  # sentinel: diagram not in pre-fetch cache
+
+
+def _prefetch_diagrams(
+    lines: list[str],
+    primary_hex: str,
+    budget: float = 45.0,
+) -> dict[int, bytes | None]:
+    """
+    Scan *lines* for all [DIAGRAM]...[/DIAGRAM] blocks and pre-fetch PNG bytes
+    for those that need HTTP (i.e. not handled by the native DrawingML builder).
+
+    All HTTP fetches run concurrently so total wall-clock time ≈ slowest single
+    fetch instead of sum of all fetches.
+
+    Parameters
+    ----------
+    budget : float
+        Maximum total seconds to wait for ALL fetches combined.
+
+    Returns
+    -------
+    dict mapping start-line-index → PNG bytes (or None if fetch failed/timed out).
+    Only diagrams that require HTTP are included; native diagrams are absent so
+    that _diagram_block falls through to build_native() as normal.
+    """
+    from . import diagram_builder, diagram_renderer
+
+    # Collect all diagram blocks that need HTTP
+    tasks: list[tuple[int, str]] = []  # (start_idx, mermaid_code)
+    i, n = 0, len(lines)
+    while i < n:
+        if lines[i].strip() == "[DIAGRAM]":
+            start = i
+            i += 1
+            code_lines = []
+            while i < n and lines[i].strip() != "[/DIAGRAM]":
+                code_lines.append(lines[i])
+                i += 1
+            code = "\n".join(code_lines)
+            if not diagram_builder.is_supported(code):
+                tasks.append((start, code))
+        i += 1
+
+    if not tasks:
+        return {}
+
+    results: dict[int, bytes | None] = {}
+
+    def fetch(start_idx: int, code: str) -> tuple[int, bytes | None]:
+        try:
+            return start_idx, diagram_renderer.render(code, primary_hex)
+        except Exception:
+            return start_idx, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        futures = {pool.submit(fetch, idx, code): idx for idx, code in tasks}
+        done, not_done = concurrent.futures.wait(
+            futures, timeout=budget, return_when=concurrent.futures.ALL_COMPLETED
+        )
+        # Cancel any still-running fetch that exceeded the budget
+        for f in not_done:
+            f.cancel()
+            results[futures[f]] = None
+
+        for f in done:
+            idx, png = f.result()
+            results[idx] = png
+
+    return results
+
+
 def _diagram_block(doc: Document, mermaid_code: str,
-                   primary_hex: str, secondary_rgb: RGBColor) -> None:
+                   primary_hex: str, secondary_rgb: RGBColor,
+                   prefetched_png=_UNSET) -> None:
     """
     Insert a diagram into the document.
 
@@ -554,11 +628,18 @@ def _diagram_block(doc: Document, mermaid_code: str,
     --------
     1. Try to build a native DrawingML diagram (editable shapes + connectors).
        Supported for ``flowchart TD/LR`` and ``graph TD/LR`` only.
-    2. If the diagram type is not supported by the native builder, or if the
-       native build fails, fall back to fetching a PNG+SVG from mermaid.ink
-       (three-attempt fallback chain inside diagram_renderer).
+    2. Use pre-fetched PNG bytes when available (parallel pre-fetch in convert()).
+       If the pre-fetch already failed (None), skip the HTTP call entirely.
+       If no pre-fetch result exists, fall back to a synchronous fetch.
     3. If all rendering fails, insert an error note and the raw Mermaid code
        as a code block so the content is never silently lost.
+
+    Parameters
+    ----------
+    prefetched_png : bytes | None | _UNSET
+        _UNSET  → no pre-fetch was done; run synchronous HTTP as fallback.
+        None    → pre-fetch ran but failed; skip HTTP, go straight to error.
+        bytes   → pre-fetched PNG; use directly, no HTTP call needed.
     """
     from . import diagram_builder, diagram_renderer
 
@@ -570,14 +651,21 @@ def _diagram_block(doc: Document, mermaid_code: str,
     except Exception:
         pass  # fall through to image rendering
 
-    # ── 2. Image rendering (PNG) ─────────────────────────────────────
+    # ── 2. Resolve PNG bytes ─────────────────────────────────────────
     png_bytes: bytes | None = None
     error_msg: str | None   = None
 
-    try:
-        png_bytes = diagram_renderer.render(mermaid_code, primary_hex)
-    except Exception as exc:
-        error_msg = str(exc)
+    if prefetched_png is not _UNSET:
+        # Result already known from parallel pre-fetch
+        png_bytes = prefetched_png
+        if png_bytes is None:
+            error_msg = "tiempo de espera agotado o servicio no disponible"
+    else:
+        # No pre-fetch: synchronous fallback (should rarely happen)
+        try:
+            png_bytes = diagram_renderer.render(mermaid_code, primary_hex)
+        except Exception as exc:
+            error_msg = str(exc)
 
     if png_bytes:
         para = doc.add_paragraph()
@@ -908,6 +996,10 @@ def convert(
         lines, title_line_idx, bk_counter
     )
 
+    # ── Pre-fetch 3: parallel HTTP fetch for non-native diagrams ─────
+    # Budget = 45 s so the full convert() comfortably fits within 60 s.
+    diagram_cache = _prefetch_diagrams(lines, primary_hex, budget=45.0)
+
     # ── Cover page (section 1, vAlign=center) ────────────────────────
     _add_cover_page(doc, title, primary_rgb, secondary_rgb)
 
@@ -957,7 +1049,8 @@ def convert(
                 diagram_lines.append(lines[i])
                 i += 1
             _diagram_block(doc, "\n".join(diagram_lines),
-                           primary_hex, secondary_rgb)
+                           primary_hex, secondary_rgb,
+                           prefetched_png=diagram_cache.get(diag_start, _UNSET))
             cap = caption_map.get(diag_start)
             if cap:
                 _add_caption(doc, cap[0], cap[2], cap[1], cap[3], cap[4])

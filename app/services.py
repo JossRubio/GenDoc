@@ -319,13 +319,29 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _progress(93)
 
     # ── 6. Convert Markdown → .docx ──────────────────────────────────
+    import concurrent.futures as _cf
+
+    _CONVERT_TIMEOUT = 60  # seconds
+
+    kwargs: dict = {"doc_type": doc_type or "technical"}
+    if primary_color:
+        kwargs["primary_color"] = primary_color
+    if secondary_color:
+        kwargs["secondary_color"] = secondary_color
+
     try:
-        kwargs: dict = {"doc_type": doc_type or "technical"}
-        if primary_color:
-            kwargs["primary_color"] = primary_color
-        if secondary_color:
-            kwargs["secondary_color"] = secondary_color
-        final_path = md_to_docx.convert(markdown, output_path, **kwargs)
+        with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+            _future = _pool.submit(md_to_docx.convert, markdown, output_path, **kwargs)
+            try:
+                final_path = _future.result(timeout=_CONVERT_TIMEOUT)
+            except _cf.TimeoutError:
+                _future.cancel()
+                yield _error(
+                    f"La conversión a Word superó el límite de {_CONVERT_TIMEOUT} segundos. "
+                    "Intenta de nuevo; si el problema persiste, el repositorio puede ser "
+                    "demasiado grande o los servicios de diagramas no están disponibles."
+                )
+                return
     except RuntimeError as exc:
         yield _error(f"Error al crear el documento Word: {exc}")
         return

@@ -356,6 +356,15 @@ def _connector_xml(sp_id: int, src_id: int, dst_id: int,
 
 # ── Public API ────────────────────────────────────────────────────────
 
+def is_supported(mermaid_code: str) -> bool:
+    """Return True if *mermaid_code* can be rendered as native DrawingML (no HTTP needed)."""
+    try:
+        _parse(mermaid_code)
+        return True
+    except UnsupportedDiagramType:
+        return False
+
+
 def build_native(doc, mermaid_code: str, primary_hex: str) -> bool:
     """
     Parse *mermaid_code* and insert a native DrawingML diagram into *doc*.
