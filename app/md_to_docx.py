@@ -497,10 +497,11 @@ def _inject_svg_into_inline(inline_shape, svg_bytes: bytes, doc: Document) -> No
         The parent document (needed to register the new relationship).
     """
     from docx.opc.part import Part as OpcPart
+    from docx.opc.packuri import PackURI
 
     idx = next(_svg_counter)
     svg_part = OpcPart(
-        f"/word/media/diagram_svg_{idx}.svg",
+        PackURI(f"/word/media/diagram_svg_{idx}.svg"),
         "image/svg+xml",
         svg_bytes,
         doc.part.package,
