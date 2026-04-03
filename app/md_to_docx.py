@@ -761,8 +761,16 @@ def convert(
     toc_entries: list[tuple[int, str, str]] = []
     seen_anchors: dict[str, int] = {}
     bk_counter = 1
+    in_code_block = False
 
     for idx, line in enumerate(lines):
+        # Track fenced code block boundaries so that '#' comment lines
+        # inside code blocks are never mistaken for Markdown headings.
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         if idx == title_line_idx:
             continue
         m = re.match(r"^(#{1,4})\s+(.*)", line)
