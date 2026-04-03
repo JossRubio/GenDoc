@@ -548,19 +548,29 @@ def _inject_svg_into_inline(inline_shape, svg_bytes: bytes, doc: Document) -> No
 def _diagram_block(doc: Document, mermaid_code: str,
                    primary_hex: str, secondary_rgb: RGBColor) -> None:
     """
-    Render *mermaid_code* and insert a vector diagram centred in the document.
+    Insert a diagram into the document.
 
     Strategy
     --------
-    1. Fetch both SVG and PNG from mermaid.ink.
-    2. Insert the PNG via ``add_picture`` (ensures compatibility with all Word
-       versions), then inject the SVG as an alternative via ``asvg:svgBlip``.
-       Word 2016+ renders the SVG; older viewers fall back to the PNG.
-    3. If only PNG is available, insert it without the SVG extension.
-    4. If neither is available, fall back to a shaded code block.
+    1. Try to build a native DrawingML diagram (editable shapes + connectors).
+       Supported for ``flowchart TD/LR`` and ``graph TD/LR`` only.
+    2. If the diagram type is not supported by the native builder, or if the
+       native build fails, fall back to fetching a PNG+SVG from mermaid.ink
+       (three-attempt fallback chain inside diagram_renderer).
+    3. If all rendering fails, insert an error note and the raw Mermaid code
+       as a code block so the content is never silently lost.
     """
-    from . import diagram_renderer
+    from . import diagram_builder, diagram_renderer
 
+    # ── 1. Native DrawingML (editable) ──────────────────────────────
+    try:
+        built = diagram_builder.build_native(doc, mermaid_code, primary_hex)
+        if built:
+            return
+    except Exception:
+        pass  # fall through to image rendering
+
+    # ── 2. Image rendering (PNG + optional SVG) ──────────────────────
     png_bytes: bytes | None = None
     svg_bytes: bytes | None = None
     error_msg: str | None   = None
@@ -574,7 +584,7 @@ def _diagram_block(doc: Document, mermaid_code: str,
         try:
             svg_bytes = diagram_renderer.render_svg(mermaid_code, primary_hex)
         except Exception:
-            pass  # SVG is optional — PNG alone is still acceptable
+            pass
 
     if png_bytes:
         para = doc.add_paragraph()
@@ -588,21 +598,22 @@ def _diagram_block(doc: Document, mermaid_code: str,
             try:
                 _inject_svg_into_inline(inline_shape, svg_bytes, doc)
             except Exception:
-                pass  # SVG injection failure must never break the document
-    else:
-        # Fallback: show a note + the raw Mermaid code in a code block
-        note = doc.add_paragraph()
-        note.paragraph_format.space_before = Pt(4)
-        note.paragraph_format.space_after  = Pt(2)
-        note_run = note.add_run(
-            "[Diagrama no renderizado"
-            + (f": {error_msg}" if error_msg else "")
-            + " — código Mermaid:]"
-        )
-        note_run.font.italic    = True
-        note_run.font.size      = Pt(9)
-        note_run.font.color.rgb = _COLOR_GRAY
-        _code_block(doc, mermaid_code.splitlines(), secondary_rgb)
+                pass
+        return
+
+    # ── 3. Fallback: error note + raw Mermaid code ───────────────────
+    note = doc.add_paragraph()
+    note.paragraph_format.space_before = Pt(4)
+    note.paragraph_format.space_after  = Pt(2)
+    note_run = note.add_run(
+        "[Diagrama no renderizado"
+        + (f": {error_msg}" if error_msg else "")
+        + " — código Mermaid:]"
+    )
+    note_run.font.italic    = True
+    note_run.font.size      = Pt(9)
+    note_run.font.color.rgb = _COLOR_GRAY
+    _code_block(doc, mermaid_code.splitlines(), secondary_rgb)
 
 
 # ── Cover page ────────────────────────────────────────────────────────
