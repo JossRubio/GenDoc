@@ -177,6 +177,8 @@ def generate_documentation_stream(
     primary_color: str | None = None,
     secondary_color: str | None = None,
     locked_sections: list[str] | None = None,
+    api_key_override: str | None = None,
+    model_override: str | None = None,
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -191,7 +193,8 @@ def generate_documentation_stream(
     # always closes cleanly instead of leaving the browser hanging.
     try:
         yield from _run(repo_path, template_path, doc_type, primary_color,
-                        secondary_color, locked_sections)
+                        secondary_color, locked_sections,
+                        api_key_override, model_override)
     except Exception as exc:
         yield _error(
             f"Error interno inesperado: {exc}. "
@@ -201,7 +204,9 @@ def generate_documentation_stream(
 
 def _run(repo_path: str, template_path: str | None, doc_type: str,
          primary_color: str | None, secondary_color: str | None,
-         locked_sections: list[str] | None = None):
+         locked_sections: list[str] | None = None,
+         api_key_override: str | None = None,
+         model_override: str | None = None):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -277,15 +282,19 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     except OSError:
         repo_name = Path(repo_path).name
 
-    model_name = os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
-    yield _log(f"LLM API: {model_name} (con fallback automático)")
+    active_model = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
+    yield _log(f"LLM API: {active_model} (con fallback automático)")
     yield _progress(40)
 
     yield _log("Construyendo prompt...")
     yield _log("Generando documentación. Esto puede tardar unos segundos...")
 
     try:
-        markdown = generator.generate(repo_scan, template_content, locked_sections)
+        markdown = generator.generate(
+            repo_scan, template_content, locked_sections,
+            api_key_override=api_key_override,
+            model_override=model_override,
+        )
     except ValueError as exc:
         yield _error(f"Error de configuración: {exc}")
         return

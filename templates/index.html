@@ -50,6 +50,48 @@
         </div>
       </div>
 
+      <!-- ── Configuración de LLM ───────────────────────────────── -->
+      <div class="mb-4">
+        <div class="gd-label">
+          Configuración de LLM
+          <span class="badge-optional">Opcional</span>
+        </div>
+
+        <!-- API Key row -->
+        <div class="gd-path-group mb-2">
+          <div class="gd-apikey-wrap">
+            <input
+              id="apiKeyInput"
+              type="password"
+              class="gd-path-input"
+              placeholder="Ingresa tu API key de Google AI Studio…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="btnToggleApiKey" class="gd-apikey-eye" type="button" title="Mostrar / ocultar">
+              <span id="apiKeyEyeIcon">👁</span>
+            </button>
+          </div>
+          <button id="btnLoadModels" class="btn-browse" type="button">
+            🔍 Cargar modelos
+          </button>
+        </div>
+
+        <!-- Model selector (hidden until models are loaded) -->
+        <div id="modelSelectorWrap" style="display:none;">
+          <div class="gd-model-row">
+            <select id="modelSelect" class="gd-model-select">
+              <option value="">— Selecciona un modelo —</option>
+            </select>
+            <span id="modelLoadStatus" class="gd-model-status"></span>
+          </div>
+        </div>
+
+        <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;">
+          Si no configuras una API key, se usará la definida en el servidor.
+        </div>
+      </div>
+
       <!-- ── Repositorio ──────────────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">Repositorio <span style="color:#ef4444">*</span></div>

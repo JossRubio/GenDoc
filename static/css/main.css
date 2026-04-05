@@ -660,6 +660,79 @@ body {
   border-color: var(--gd-log-border);
 }
 
+/* ── LLM config ──────────────────────────────────────────────────── */
+
+.gd-apikey-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.gd-apikey-wrap .gd-path-input {
+  flex: 1;
+  padding-right: 2.5rem; /* room for the eye button */
+}
+
+.gd-apikey-eye {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  color: var(--gd-muted);
+  transition: opacity 0.15s;
+}
+
+.gd-apikey-eye:hover {
+  opacity: 0.7;
+}
+
+.gd-model-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.gd-model-select {
+  flex: 1;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  color: var(--gd-text);
+  background: var(--gd-input-bg);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.25s, color 0.25s;
+  font-family: inherit;
+}
+
+.gd-model-select:focus {
+  border-color: var(--gd-primary);
+  background: var(--gd-input-focus-bg);
+}
+
+.gd-model-status {
+  font-size: 0.74rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.gd-model-status--loading { color: var(--gd-muted); }
+.gd-model-status--success { color: #15803d; }
+.gd-model-status--warn    { color: #92680a; }
+.gd-model-status--error   { color: #ef4444; }
+
+[data-theme="dark"] .gd-model-status--success { color: #4ade80; }
+[data-theme="dark"] .gd-model-status--warn    { color: #fbbf24; }
+
 /* Responsive tweaks */
 @media (max-width: 540px) {
   .gd-card {

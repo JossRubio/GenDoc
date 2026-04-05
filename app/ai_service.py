@@ -102,6 +102,42 @@ def _friendly_api_error(exc: object) -> str:
     return f"Error de la API de Gemini ({code}): {exc}"
 
 
+# ── Model listing ────────────────────────────────────────────────────
+
+def list_models(api_key: str) -> list[dict]:
+    """
+    Return all Gemini models available to *api_key* that support generateContent.
+
+    Each entry is ``{"id": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash"}``.
+
+    Raises
+    ------
+    ValueError   — API key rejected (401/403).
+    RuntimeError — Network or unexpected error.
+    """
+    from google import genai                         # noqa: PLC0415
+    from google.genai import errors as genai_errors  # noqa: PLC0415
+
+    try:
+        client = genai.Client(api_key=api_key)
+        models: list[dict] = []
+        for m in client.models.list():
+            supported = list(getattr(m, "supported_actions", None) or [])
+            if "generateContent" not in supported:
+                continue
+            raw_name = getattr(m, "name", "") or ""
+            model_id = raw_name.removeprefix("models/")
+            if not model_id:
+                continue
+            display = getattr(m, "display_name", None) or model_id
+            models.append({"id": model_id, "display_name": display})
+        return models
+    except genai_errors.ClientError as exc:
+        raise ValueError(_friendly_api_error(exc)) from exc
+    except Exception as exc:
+        raise RuntimeError(f"Error al listar modelos: {exc}") from exc
+
+
 # ── Fallback model chain ──────────────────────────────────────────────
 
 # HTTP codes that indicate a model is unavailable or rate-limited.
@@ -118,19 +154,26 @@ _FALLBACK_MODELS = [
 
 # ── Public API ────────────────────────────────────────────────────────
 
-def call_gemini(prompt: str) -> str:
+def call_gemini(
+    prompt: str,
+    *,
+    api_key_override: str | None = None,
+    model_override: str | None = None,
+) -> str:
     """
     Send *prompt* to Gemini and return the response as a Markdown string.
 
-    The primary model is read from ``LLM_MODEL`` in the environment.
+    The primary model is read from ``LLM_MODEL`` in the environment, unless
+    *model_override* is provided (e.g. from a per-request UI selection).
     If that model returns a retryable error (404, 429, 503) the call is
-    retried with each model in ``_FALLBACK_MODELS`` in order until one
-    succeeds or all are exhausted.
+    retried with each model in ``_FALLBACK_MODELS`` in order.
 
-    Configuration
-    -------------
-    LLM_API_KEY  — Google AI Studio API key (required).
-    LLM_MODEL    — primary model identifier (default: ``gemini-3-flash-preview``).
+    Parameters
+    ----------
+    api_key_override : str | None
+        When provided, used instead of the ``LLM_API_KEY`` env variable.
+    model_override : str | None
+        When provided, used as the primary model instead of ``LLM_MODEL``.
 
     Raises
     ------
@@ -138,7 +181,7 @@ def call_gemini(prompt: str) -> str:
     RuntimeError — All models failed, or a non-retryable API error occurred.
     """
     # ── Validate config ──────────────────────────────────────────────
-    api_key = os.getenv("LLM_API_KEY", "").strip()
+    api_key = (api_key_override or "").strip() or os.getenv("LLM_API_KEY", "").strip()
     if not api_key or api_key == "tu_api_key_aqui":
         raise ValueError(
             "LLM_API_KEY no está configurada. "
@@ -146,7 +189,7 @@ def call_gemini(prompt: str) -> str:
             "con tu clave de Google AI Studio."
         )
 
-    primary = os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
+    primary = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
     if not primary:
         raise ValueError(
             "LLM_MODEL está vacío en el archivo .env. "

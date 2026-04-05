@@ -6,6 +6,7 @@ from flask import (
     request, send_file, stream_with_context,
 )
 
+from . import ai_service
 from .services import browse_folder, browse_file, generate_documentation_stream, extract_template_sections
 
 main = Blueprint("main", __name__)
@@ -47,15 +48,34 @@ def api_template_sections():
     return jsonify({"sections": sections})
 
 
+@main.route("/api/models", methods=["POST"])
+def api_list_models():
+    body    = request.get_json(silent=True) or {}
+    api_key = (body.get("api_key") or "").strip()
+
+    if not api_key:
+        return jsonify({"error": "No se proporcionó API key."}), 400
+
+    try:
+        models = ai_service.list_models(api_key)
+        return jsonify({"models": models})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 401
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
-    body            = request.get_json(silent=True) or {}
-    repo_path       = (body.get("repo_path")       or "").strip()
-    template_path   = (body.get("template_path")   or "").strip() or None
-    doc_type        = (body.get("doc_type")         or "").strip() or None
-    primary_color   = (body.get("primary_color")   or "").strip() or None
-    secondary_color = (body.get("secondary_color") or "").strip() or None
-    locked_sections = body.get("locked_sections")  # list[str] | None
+    body             = request.get_json(silent=True) or {}
+    repo_path        = (body.get("repo_path")        or "").strip()
+    template_path    = (body.get("template_path")    or "").strip() or None
+    doc_type         = (body.get("doc_type")          or "").strip() or None
+    primary_color    = (body.get("primary_color")    or "").strip() or None
+    secondary_color  = (body.get("secondary_color")  or "").strip() or None
+    locked_sections  = body.get("locked_sections")   # list[str] | None
+    api_key_override = (body.get("api_key_override") or "").strip() or None
+    model_override   = (body.get("model_override")   or "").strip() or None
 
     if not isinstance(locked_sections, list):
         locked_sections = None
@@ -68,7 +88,8 @@ def api_generate():
     def event_stream():
         for event in generate_documentation_stream(repo_path, template_path, doc_type,
                                                     primary_color, secondary_color,
-                                                    locked_sections):
+                                                    locked_sections,
+                                                    api_key_override, model_override):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

@@ -162,6 +162,9 @@ class BaseGenerator:
         repo_scan: RepoScan,
         template_content: str | None = None,
         locked_sections: list[str] | None = None,
+        *,
+        api_key_override: str | None = None,
+        model_override: str | None = None,
     ) -> str:
         """
         Build the prompt for this document type, send it to Gemini, and
@@ -171,6 +174,10 @@ class BaseGenerator:
         ----------
         locked_sections : list[str] | None
             Section titles the LLM must reproduce verbatim from the template.
+        api_key_override : str | None
+            Override the API key from the environment.
+        model_override : str | None
+            Override the model from the environment.
 
         Raises
         ------
@@ -184,7 +191,11 @@ class BaseGenerator:
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"
             ) from exc
 
-        return ai_service.call_gemini(prompt)
+        return ai_service.call_gemini(
+            prompt,
+            api_key_override=api_key_override,
+            model_override=model_override,
+        )
 
     def build_section_prompt(
         self,

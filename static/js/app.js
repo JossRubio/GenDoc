@@ -34,6 +34,14 @@ const ui = {
   sectionsList:           document.getElementById("sectionsList"),
   btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
   btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
+  // LLM config
+  apiKeyInput:            document.getElementById("apiKeyInput"),
+  btnToggleApiKey:        document.getElementById("btnToggleApiKey"),
+  apiKeyEyeIcon:          document.getElementById("apiKeyEyeIcon"),
+  btnLoadModels:          document.getElementById("btnLoadModels"),
+  modelSelectorWrap:      document.getElementById("modelSelectorWrap"),
+  modelSelect:            document.getElementById("modelSelect"),
+  modelLoadStatus:        document.getElementById("modelLoadStatus"),
 };
 
 // ── State ────────────────────────────────────────────────────────────
@@ -137,6 +145,67 @@ function setDocTypeEnabled(enabled) {
   const wrap = document.querySelector(".gd-segment");
   if (wrap) wrap.classList.toggle("gd-segment--disabled", !enabled);
 }
+
+// ── LLM config ───────────────────────────────────────────────────────
+
+ui.btnToggleApiKey.addEventListener("click", () => {
+  const isHidden = ui.apiKeyInput.type === "password";
+  ui.apiKeyInput.type = isHidden ? "text" : "password";
+  ui.apiKeyEyeIcon.textContent = isHidden ? "🙈" : "👁";
+});
+
+function setModelStatus(msg, type = "info") {
+  ui.modelLoadStatus.textContent = msg;
+  ui.modelLoadStatus.className = `gd-model-status gd-model-status--${type}`;
+}
+
+async function loadModels() {
+  const apiKey = ui.apiKeyInput.value.trim();
+  if (!apiKey) {
+    setModelStatus("Ingresa una API key primero.", "warn");
+    ui.modelSelectorWrap.style.display = "block";
+    return;
+  }
+
+  ui.btnLoadModels.disabled = true;
+  ui.modelSelectorWrap.style.display = "block";
+  setModelStatus("Cargando modelos…", "loading");
+  ui.modelSelect.innerHTML = '<option value="">Cargando…</option>';
+
+  try {
+    const resp = await fetch("/api/models", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ api_key: apiKey }),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      setModelStatus(`Error: ${data.error}`, "error");
+      ui.modelSelect.innerHTML = '<option value="">— Sin modelos —</option>';
+      return;
+    }
+
+    const models = data.models || [];
+    ui.modelSelect.innerHTML = '<option value="">— Usar modelo del servidor —</option>';
+    models.forEach(m => {
+      const opt = document.createElement("option");
+      opt.value       = m.id;
+      opt.textContent = m.display_name || m.id;
+      ui.modelSelect.appendChild(opt);
+    });
+
+    setModelStatus(`${models.length} modelo(s) disponible(s)`, "success");
+    log(`Modelos cargados: ${models.length}`, "success");
+  } catch (err) {
+    setModelStatus("No se pudo conectar con el servidor.", "error");
+    ui.modelSelect.innerHTML = '<option value="">— Error al cargar —</option>';
+  } finally {
+    ui.btnLoadModels.disabled = false;
+  }
+}
+
+ui.btnLoadModels.addEventListener("click", loadModels);
 
 // ── Browse handlers ──────────────────────────────────────────────────
 
@@ -347,6 +416,9 @@ async function generate() {
   log("Iniciando generación de documentación...");
 
   try {
+    const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
+    const modelOverride    = ui.modelSelect.value.trim() || null;
+
     const resp = await fetch("/api/generate", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -357,6 +429,8 @@ async function generate() {
         primary_color:    ui.colorPrimary.value,
         secondary_color:  ui.colorSecondary.value,
         locked_sections:  getLockedSections(),
+        api_key_override: apiKeyOverride,
+        model_override:   modelOverride,
       }),
     });
 
