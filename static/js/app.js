@@ -209,7 +209,19 @@ ui.btnLoadModels.addEventListener("click", loadModels);
 
 // ── Browse handlers ──────────────────────────────────────────────────
 
+function setBrowseLoading(btn, loading) {
+  if (loading) {
+    btn.dataset.originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="gd-spinner"></span>';
+    btn.disabled  = true;
+  } else {
+    btn.innerHTML = btn.dataset.originalText || btn.innerHTML;
+    btn.disabled  = false;
+  }
+}
+
 async function browseFolder() {
+  setBrowseLoading(ui.btnBrowseRepo, true);
   try {
     const resp = await fetch("/api/browse/folder", { method: "POST" });
     const data = await resp.json();
@@ -221,10 +233,13 @@ async function browseFolder() {
     }
   } catch {
     log("No se pudo abrir el selector de carpeta.", "error");
+  } finally {
+    setBrowseLoading(ui.btnBrowseRepo, false);
   }
 }
 
 async function browseFile() {
+  setBrowseLoading(ui.btnBrowseTpl, true);
   try {
     const resp = await fetch("/api/browse/file", { method: "POST" });
     const data = await resp.json();
@@ -236,6 +251,8 @@ async function browseFile() {
     }
   } catch {
     log("No se pudo abrir el selector de archivo.", "error");
+  } finally {
+    setBrowseLoading(ui.btnBrowseTpl, false);
   }
 }
 

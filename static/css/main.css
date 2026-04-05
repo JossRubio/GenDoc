@@ -233,9 +233,26 @@ body {
   transition: background 0.15s, border-color 0.15s, color 0.25s;
 }
 
-.btn-browse:hover {
+.btn-browse:hover:not(:disabled) {
   background: var(--gd-btn-browse-hover);
   border-color: var(--gd-btn-browse-border-hover);
+}
+
+.btn-browse:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* Spinner shown inside browse buttons while dialog is open */
+.gd-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--gd-border);
+  border-top-color: var(--gd-primary);
+  border-radius: 50%;
+  animation: gd-spin 0.7s linear infinite;
+  vertical-align: middle;
 }
 
 .btn-generate {
@@ -436,6 +453,10 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
+}
+
+@keyframes gd-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Theme toggle switch ───────────────────────────────────────────── */
