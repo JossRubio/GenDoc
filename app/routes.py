@@ -50,15 +50,16 @@ def api_template_sections():
 
 @main.route("/api/models", methods=["POST"])
 def api_list_models():
-    body    = request.get_json(silent=True) or {}
-    api_key = (body.get("api_key") or "").strip()
+    body     = request.get_json(silent=True) or {}
+    api_key  = (body.get("api_key")  or "").strip()
+    provider = (body.get("provider") or "").strip() or None
 
     if not api_key:
         return jsonify({"error": "No se proporcionó API key."}), 400
 
     try:
-        models = ai_service.list_models(api_key)
-        return jsonify({"models": models})
+        models = ai_service.list_models(api_key, provider)
+        return jsonify({"models": models, "provider": provider or ai_service.detect_provider(api_key)})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 401
     except Exception as exc:
@@ -74,8 +75,9 @@ def api_generate():
     primary_color    = (body.get("primary_color")    or "").strip() or None
     secondary_color  = (body.get("secondary_color")  or "").strip() or None
     locked_sections  = body.get("locked_sections")   # list[str] | None
-    api_key_override = (body.get("api_key_override") or "").strip() or None
-    model_override   = (body.get("model_override")   or "").strip() or None
+    api_key_override  = (body.get("api_key_override")  or "").strip() or None
+    model_override    = (body.get("model_override")    or "").strip() or None
+    provider_override = (body.get("provider_override") or "").strip() or None
 
     if not isinstance(locked_sections, list):
         locked_sections = None
@@ -89,7 +91,8 @@ def api_generate():
         for event in generate_documentation_stream(repo_path, template_path, doc_type,
                                                     primary_color, secondary_color,
                                                     locked_sections,
-                                                    api_key_override, model_override):
+                                                    api_key_override, model_override,
+                                                    provider_override):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

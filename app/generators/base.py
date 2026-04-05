@@ -165,6 +165,7 @@ class BaseGenerator:
         *,
         api_key_override: str | None = None,
         model_override: str | None = None,
+        provider_override: str | None = None,
     ) -> str:
         """
         Build the prompt for this document type, send it to Gemini, and
@@ -191,10 +192,11 @@ class BaseGenerator:
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"
             ) from exc
 
-        return ai_service.call_gemini(
+        return ai_service.call_llm(
             prompt,
             api_key_override=api_key_override,
             model_override=model_override,
+            provider_override=provider_override,
         )
 
     def build_section_prompt(

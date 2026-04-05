@@ -1,21 +1,18 @@
 """
-ai_service.py — Thin Gemini client.
+ai_service.py — Multi-provider LLM client.
 
-Responsibilities:
-  - Validate API configuration (key, model name).
-  - Serialise a RepoScan into the repo-context block included in prompts.
-  - Execute a single call to Gemini and return the raw Markdown string.
-  - Normalise every possible API/network error into ValueError or RuntimeError
-    with a clear, user-facing Spanish message.
-
-What does NOT live here:
-  - Section lists (each generator owns them).
-  - Prompt assembly (each generator owns that too).
+Supported providers
+-------------------
+  google    — Google AI Studio (Gemini models)
+  anthropic — Anthropic (Claude models)
+  openai    — OpenAI (GPT / o-series models)
 
 Public API
 ----------
-build_repo_context(repo_scan)  -> str
-call_gemini(prompt)            -> str
+detect_provider(api_key)                      -> str          ("google" | "anthropic" | "openai")
+list_models(api_key, provider)                -> list[dict]
+call_llm(prompt, *, api_key_override, model_override, provider_override) -> str
+build_repo_context(repo_scan)                 -> str
 """
 
 from __future__ import annotations
@@ -24,30 +21,51 @@ import os
 
 from .repo_reader import RepoScan
 
-# Maximum characters of repository content included in any prompt.
-# Keeps requests within Gemini's context window and controls cost.
 MAX_CONTEXT_CHARS = 350_000
 
+# OpenAI model ID prefixes that support chat/text generation
+_OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
 
-# ── Repo serialiser (shared by all generators) ───────────────────────
+# Anthropic models that support text generation (display name suffix filter)
+# We rely on the SDK listing, so no manual list needed.
+
+# Google fallback chain (tried in order when primary returns a retryable error)
+_GOOGLE_FALLBACK_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-2.5-flash",
+]
+_GOOGLE_RETRYABLE_CODES = {404, 429, 503}
+
+
+# ── Provider detection ────────────────────────────────────────────────
+
+def detect_provider(api_key: str) -> str:
+    """
+    Guess the provider from the API key format.
+
+    Returns ``"google"``, ``"anthropic"``, or ``"openai"``.
+    Falls back to ``"google"`` when the key does not match a known pattern.
+    """
+    key = (api_key or "").strip()
+    if key.startswith("sk-ant-"):
+        return "anthropic"
+    if key.startswith("sk-"):
+        return "openai"
+    return "google"
+
+
+# ── Repo serialiser ───────────────────────────────────────────────────
 
 def build_repo_context(repo_scan: RepoScan) -> str:
-    """
-    Serialise *repo_scan* into a Markdown block suitable for inclusion
-    in a generation prompt.  Files that would push the total past
-    ``MAX_CONTEXT_CHARS`` are listed but their content is omitted.
-    """
     parts: list[str] = []
-
     parts.append("## Estructura del repositorio\n\n")
     for f in repo_scan.files:
         parts.append(f"- `{f.relative_path}`\n")
     parts.append("\n---\n\n## Contenido de los archivos\n\n")
-
     used_chars = sum(len(p) for p in parts)
-
     for f in repo_scan.files:
-        lang = f.extension.lstrip(".") or "text"
+        lang  = f.extension.lstrip(".") or "text"
         block = f"### `{f.relative_path}`\n\n```{lang}\n{f.content}\n```\n\n"
         if used_chars + len(block) > MAX_CONTEXT_CHARS:
             parts.append(
@@ -57,216 +75,316 @@ def build_repo_context(repo_scan: RepoScan) -> str:
             continue
         parts.append(block)
         used_chars += len(block)
-
     return "".join(parts)
 
 
-# ── Error helper ──────────────────────────────────────────────────────
+# ── Google helpers ────────────────────────────────────────────────────
 
-def _friendly_api_error(exc: object) -> str:
-    """Map a Gemini APIError HTTP code to a user-facing Spanish message."""
+def _google_friendly_error(exc: object) -> str:
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-
     messages: dict[int, str] = {
-        400: (
-            "La solicitud al modelo fue rechazada (400). "
-            "Verifica que LLM_MODEL en .env sea un nombre de modelo válido."
-        ),
-        401: (
-            "La clave de API es inválida o no está autorizada (401). "
-            "Revisa LLM_API_KEY en tu archivo .env."
-        ),
-        403: (
-            "Sin permisos para usar este modelo (403). "
-            "Verifica que tu clave de API tenga acceso a Gemini."
-        ),
-        429: (
-            "Se superó la cuota de solicitudes al modelo (429). "
-            "Espera unos minutos y vuelve a intentarlo, "
-            "o revisa tu plan en Google AI Studio."
-        ),
-        500: (
-            "Error interno del servidor de Google (500). "
-            "El servicio puede estar temporalmente no disponible. "
-            "Intenta de nuevo en unos minutos."
-        ),
-        503: (
-            "El servicio de Gemini no está disponible en este momento (503). "
-            "Intenta de nuevo más tarde."
-        ),
+        400: "La solicitud fue rechazada (400). Verifica que el modelo sea válido.",
+        401: "API key de Google inválida o no autorizada (401).",
+        403: "Sin permisos para usar este modelo de Google (403).",
+        429: "Cuota de solicitudes superada en Google AI (429). Espera unos minutos.",
+        500: "Error interno del servidor de Google (500). Intenta de nuevo.",
+        503: "Servicio de Google no disponible (503). Intenta más tarde.",
     }
-
-    if code in messages:
-        return messages[code]
-
-    return f"Error de la API de Gemini ({code}): {exc}"
+    return messages.get(code, f"Error Google API ({code}): {exc}")
 
 
-# ── Model listing ────────────────────────────────────────────────────
-
-def list_models(api_key: str) -> list[dict]:
-    """
-    Return all Gemini models available to *api_key* that support generateContent.
-
-    Each entry is ``{"id": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash"}``.
-
-    Raises
-    ------
-    ValueError   — API key rejected (401/403).
-    RuntimeError — Network or unexpected error.
-    """
-    from google import genai                         # noqa: PLC0415
-    from google.genai import errors as genai_errors  # noqa: PLC0415
-
+def _list_google(api_key: str) -> list[dict]:
+    from google import genai
+    from google.genai import errors as genai_errors
     try:
         client = genai.Client(api_key=api_key)
-        models: list[dict] = []
+        result = []
         for m in client.models.list():
             supported = list(getattr(m, "supported_actions", None) or [])
             if "generateContent" not in supported:
                 continue
-            raw_name = getattr(m, "name", "") or ""
-            model_id = raw_name.removeprefix("models/")
-            if not model_id:
+            raw  = getattr(m, "name", "") or ""
+            mid  = raw.removeprefix("models/")
+            if not mid:
                 continue
-            display = getattr(m, "display_name", None) or model_id
-            models.append({"id": model_id, "display_name": display})
-        return models
+            display = getattr(m, "display_name", None) or mid
+            result.append({"id": mid, "display_name": display})
+        return result
     except genai_errors.ClientError as exc:
-        raise ValueError(_friendly_api_error(exc)) from exc
+        raise ValueError(_google_friendly_error(exc)) from exc
     except Exception as exc:
-        raise RuntimeError(f"Error al listar modelos: {exc}") from exc
+        raise RuntimeError(f"Error al listar modelos de Google: {exc}") from exc
 
 
-# ── Fallback model chain ──────────────────────────────────────────────
+def _call_google(prompt: str, api_key: str, primary_model: str) -> str:
+    from google import genai
+    from google.genai import errors as genai_errors
 
-# HTTP codes that indicate a model is unavailable or rate-limited.
-# For these the next model in the fallback chain is tried automatically.
-# Auth errors (401, 403) are NOT retried — switching models won't fix them.
-_RETRYABLE_CODES = {404, 429, 503}
-
-_FALLBACK_MODELS = [
-    "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-2.5-flash",
-]
-
-
-# ── Public API ────────────────────────────────────────────────────────
-
-def call_gemini(
-    prompt: str,
-    *,
-    api_key_override: str | None = None,
-    model_override: str | None = None,
-) -> str:
-    """
-    Send *prompt* to Gemini and return the response as a Markdown string.
-
-    The primary model is read from ``LLM_MODEL`` in the environment, unless
-    *model_override* is provided (e.g. from a per-request UI selection).
-    If that model returns a retryable error (404, 429, 503) the call is
-    retried with each model in ``_FALLBACK_MODELS`` in order.
-
-    Parameters
-    ----------
-    api_key_override : str | None
-        When provided, used instead of the ``LLM_API_KEY`` env variable.
-    model_override : str | None
-        When provided, used as the primary model instead of ``LLM_MODEL``.
-
-    Raises
-    ------
-    ValueError   — Missing / invalid API key, empty model name.
-    RuntimeError — All models failed, or a non-retryable API error occurred.
-    """
-    # ── Validate config ──────────────────────────────────────────────
-    api_key = (api_key_override or "").strip() or os.getenv("LLM_API_KEY", "").strip()
-    if not api_key or api_key == "tu_api_key_aqui":
-        raise ValueError(
-            "LLM_API_KEY no está configurada. "
-            "Abre el archivo .env y reemplaza 'tu_api_key_aqui' "
-            "con tu clave de Google AI Studio."
-        )
-
-    primary = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
-    if not primary:
-        raise ValueError(
-            "LLM_MODEL está vacío en el archivo .env. "
-            "Usa un valor como 'gemini-2.5-flash'."
-        )
-
-    # Build ordered list: primary first, then fallbacks (skip duplicates)
     seen: set[str] = set()
     models_to_try: list[str] = []
-    for m in [primary] + _FALLBACK_MODELS:
+    for m in [primary_model] + _GOOGLE_FALLBACK_MODELS:
         if m not in seen:
             seen.add(m)
             models_to_try.append(m)
 
-    # ── Call Gemini with fallback chain ──────────────────────────────
-    # Imported here (not at module level) so the heavy SDK initialisation
-    # only happens when the user actually clicks "Generar", not at startup.
-    from google import genai                         # noqa: PLC0415
-    from google.genai import errors as genai_errors  # noqa: PLC0415
-
-    client = genai.Client(api_key=api_key)
-    last_error: str = ""
+    client     = genai.Client(api_key=api_key)
+    last_error = ""
 
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
-                model=model_name, contents=prompt
-            )
+            response = client.models.generate_content(model=model_name, contents=prompt)
         except genai_errors.ClientError as exc:
             code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-            if code in _RETRYABLE_CODES:
-                last_error = f"[{model_name}] {_friendly_api_error(exc)}"
-                continue  # try next model
-            raise RuntimeError(_friendly_api_error(exc)) from exc
+            if code in _GOOGLE_RETRYABLE_CODES:
+                last_error = f"[{model_name}] {_google_friendly_error(exc)}"
+                continue
+            raise RuntimeError(_google_friendly_error(exc)) from exc
         except genai_errors.ServerError as exc:
             code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-            if code in _RETRYABLE_CODES:
-                last_error = f"[{model_name}] {_friendly_api_error(exc)}"
+            if code in _GOOGLE_RETRYABLE_CODES:
+                last_error = f"[{model_name}] {_google_friendly_error(exc)}"
                 continue
-            raise RuntimeError(_friendly_api_error(exc)) from exc
+            raise RuntimeError(_google_friendly_error(exc)) from exc
         except (ConnectionError, TimeoutError, OSError) as exc:
             raise RuntimeError(
-                "No se pudo conectar con la API de Gemini. "
-                f"Verifica tu conexión a internet. Detalle: {exc}"
+                f"No se pudo conectar con Google AI. Detalle: {exc}"
             ) from exc
         except Exception as exc:
-            raise RuntimeError(f"Error inesperado al llamar al modelo: {exc}") from exc
+            raise RuntimeError(f"Error inesperado (Google): {exc}") from exc
 
-        # ── Validate response ────────────────────────────────────────
-        # response.text raises ValueError when content is blocked by safety filters.
         try:
             text = response.text
         except ValueError:
-            finish_reason = "desconocido"
+            finish = "desconocido"
             try:
-                finish_reason = str(response.candidates[0].finish_reason)
+                finish = str(response.candidates[0].finish_reason)
             except Exception:
                 pass
             raise RuntimeError(
-                f"El modelo rechazó generar el contenido (motivo: {finish_reason}). "
-                "Esto ocurre cuando el contenido del repositorio activa los filtros "
-                "de seguridad. Intenta con un repositorio diferente."
+                f"Google rechazó el contenido (motivo: {finish}). "
+                "El repositorio puede haber activado los filtros de seguridad."
             )
         except AttributeError as exc:
-            raise RuntimeError(
-                f"La respuesta del modelo tiene un formato inesperado: {exc}"
-            ) from exc
+            raise RuntimeError(f"Respuesta de Google con formato inesperado: {exc}") from exc
 
         if not text or not text.strip():
-            raise RuntimeError(
-                "El modelo devolvió una respuesta vacía. "
-                "Revisa que el repositorio contenga archivos con código legible."
-            )
-
+            raise RuntimeError("Google devolvió una respuesta vacía.")
         return text
 
-    # All models in the chain exhausted
-    raise RuntimeError(
-        f"Todos los modelos disponibles fallaron. Último error: {last_error}"
+    raise RuntimeError(f"Todos los modelos de Google fallaron. Último error: {last_error}")
+
+
+# ── Anthropic helpers ─────────────────────────────────────────────────
+
+def _list_anthropic(api_key: str) -> list[dict]:
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'anthropic' no está instalado. "
+            "Ejecuta: pip install anthropic"
+        )
+    try:
+        client = _anthropic.Anthropic(api_key=api_key)
+        result = []
+        for m in client.models.list():
+            mid     = getattr(m, "id", None) or ""
+            display = getattr(m, "display_name", None) or mid
+            if mid:
+                result.append({"id": mid, "display_name": display})
+        return result
+    except _anthropic.AuthenticationError as exc:
+        raise ValueError(f"API key de Anthropic inválida o no autorizada: {exc}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Error al listar modelos de Anthropic: {exc}") from exc
+
+
+def _call_anthropic(prompt: str, api_key: str, model: str) -> str:
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'anthropic' no está instalado. "
+            "Ejecuta: pip install anthropic"
+        )
+    try:
+        client  = _anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=model,
+            max_tokens=8096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text if message.content else ""
+        if not text or not text.strip():
+            raise RuntimeError("Anthropic devolvió una respuesta vacía.")
+        return text
+    except _anthropic.AuthenticationError as exc:
+        raise RuntimeError(f"API key de Anthropic inválida o no autorizada: {exc}") from exc
+    except _anthropic.RateLimitError as exc:
+        raise RuntimeError(f"Cuota de Anthropic superada (429): {exc}") from exc
+    except _anthropic.APIStatusError as exc:
+        raise RuntimeError(f"Error de la API de Anthropic ({exc.status_code}): {exc}") from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"No se pudo conectar con Anthropic. Detalle: {exc}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Error inesperado (Anthropic): {exc}") from exc
+
+
+# ── OpenAI helpers ────────────────────────────────────────────────────
+
+def _list_openai(api_key: str) -> list[dict]:
+    try:
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'openai' no está instalado. "
+            "Ejecuta: pip install openai"
+        )
+    try:
+        client = _openai.OpenAI(api_key=api_key)
+        result = []
+        for m in client.models.list():
+            mid = getattr(m, "id", None) or ""
+            if any(mid.startswith(p) for p in _OPENAI_CHAT_PREFIXES):
+                result.append({"id": mid, "display_name": mid})
+        result.sort(key=lambda x: x["id"])
+        return result
+    except _openai.AuthenticationError as exc:
+        raise ValueError(f"API key de OpenAI inválida o no autorizada: {exc}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Error al listar modelos de OpenAI: {exc}") from exc
+
+
+def _call_openai(prompt: str, api_key: str, model: str) -> str:
+    try:
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'openai' no está instalado. "
+            "Ejecuta: pip install openai"
+        )
+    try:
+        client   = _openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.choices[0].message.content if response.choices else ""
+        if not text or not text.strip():
+            raise RuntimeError("OpenAI devolvió una respuesta vacía.")
+        return text
+    except _openai.AuthenticationError as exc:
+        raise RuntimeError(f"API key de OpenAI inválida o no autorizada: {exc}") from exc
+    except _openai.RateLimitError as exc:
+        raise RuntimeError(f"Cuota de OpenAI superada (429): {exc}") from exc
+    except _openai.APIStatusError as exc:
+        raise RuntimeError(f"Error de la API de OpenAI ({exc.status_code}): {exc}") from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"No se pudo conectar con OpenAI. Detalle: {exc}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Error inesperado (OpenAI): {exc}") from exc
+
+
+# ── Public API ────────────────────────────────────────────────────────
+
+def list_models(api_key: str, provider: str | None = None) -> list[dict]:
+    """
+    Return models available to *api_key* that support text generation.
+
+    Parameters
+    ----------
+    api_key  : str
+        Provider API key.
+    provider : "google" | "anthropic" | "openai" | None
+        When None, auto-detected from the key format.
+
+    Each entry: ``{"id": "model-id", "display_name": "Human Name"}``.
+
+    Raises
+    ------
+    ValueError   — API key rejected (auth error).
+    RuntimeError — Network or unexpected error.
+    """
+    prov = (provider or detect_provider(api_key)).lower()
+    if prov == "anthropic":
+        return _list_anthropic(api_key)
+    if prov == "openai":
+        return _list_openai(api_key)
+    return _list_google(api_key)
+
+
+def call_llm(
+    prompt: str,
+    *,
+    api_key_override: str | None = None,
+    model_override:   str | None = None,
+    provider_override: str | None = None,
+) -> str:
+    """
+    Send *prompt* to the configured LLM and return the response as a string.
+
+    Provider resolution order:
+      1. *provider_override* (explicit, from UI)
+      2. Auto-detected from *api_key_override* (if provided)
+      3. ``"google"`` (server default)
+
+    API key resolution order:
+      1. *api_key_override*
+      2. ``LLM_API_KEY`` env variable
+
+    Model resolution order:
+      1. *model_override*
+      2. ``LLM_MODEL`` env variable (Google only)
+      3. Provider default
+
+    Raises
+    ------
+    ValueError   — Missing / invalid API key.
+    RuntimeError — All models failed or non-retryable error.
+    """
+    api_key = (api_key_override or "").strip() or os.getenv("LLM_API_KEY", "").strip()
+    if not api_key or api_key == "tu_api_key_aqui":
+        raise ValueError(
+            "LLM_API_KEY no está configurada. "
+            "Abre el archivo .env o ingresa tu API key en la interfaz."
+        )
+
+    # Resolve provider
+    if provider_override:
+        provider = provider_override.lower()
+    elif api_key_override:
+        provider = detect_provider(api_key_override)
+    else:
+        provider = "google"
+
+    model = (model_override or "").strip()
+
+    if provider == "anthropic":
+        if not model:
+            model = "claude-sonnet-4-5"
+        return _call_anthropic(prompt, api_key, model)
+
+    if provider == "openai":
+        if not model:
+            model = "gpt-4o"
+        return _call_openai(prompt, api_key, model)
+
+    # Google (default)
+    if not model:
+        model = os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip() or "gemini-3-flash-preview"
+    return _call_google(prompt, api_key, model)
+
+
+# Keep old name as alias so any direct callers don't break
+def call_gemini(
+    prompt: str,
+    *,
+    api_key_override: str | None = None,
+    model_override:   str | None = None,
+) -> str:
+    return call_llm(
+        prompt,
+        api_key_override=api_key_override,
+        model_override=model_override,
+        provider_override=None,
     )

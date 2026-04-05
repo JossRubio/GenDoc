@@ -683,6 +683,26 @@ body {
 
 /* ── LLM config ──────────────────────────────────────────────────── */
 
+.gd-provider-select {
+  flex-shrink: 0;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--gd-text);
+  background: var(--gd-btn-browse-bg);
+  outline: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.25s, color 0.25s;
+  font-family: inherit;
+}
+
+.gd-provider-select:focus {
+  border-color: var(--gd-primary);
+}
+
 .gd-apikey-wrap {
   position: relative;
   flex: 1;

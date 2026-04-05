@@ -57,14 +57,19 @@
           <span class="badge-optional">Opcional</span>
         </div>
 
-        <!-- API Key row -->
+        <!-- Provider selector + API Key row -->
         <div class="gd-path-group mb-2">
+          <select id="providerSelect" class="gd-provider-select">
+            <option value="google">Google AI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+          </select>
           <div class="gd-apikey-wrap">
             <input
               id="apiKeyInput"
               type="password"
               class="gd-path-input"
-              placeholder="Ingresa tu API key de Google AI Studio…"
+              placeholder="API key del proveedor seleccionado…"
               autocomplete="off"
               spellcheck="false"
             />

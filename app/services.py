@@ -179,6 +179,7 @@ def generate_documentation_stream(
     locked_sections: list[str] | None = None,
     api_key_override: str | None = None,
     model_override: str | None = None,
+    provider_override: str | None = None,
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -194,7 +195,7 @@ def generate_documentation_stream(
     try:
         yield from _run(repo_path, template_path, doc_type, primary_color,
                         secondary_color, locked_sections,
-                        api_key_override, model_override)
+                        api_key_override, model_override, provider_override)
     except Exception as exc:
         yield _error(
             f"Error interno inesperado: {exc}. "
@@ -206,7 +207,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
          primary_color: str | None, secondary_color: str | None,
          locked_sections: list[str] | None = None,
          api_key_override: str | None = None,
-         model_override: str | None = None):
+         model_override: str | None = None,
+         provider_override: str | None = None):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -282,8 +284,9 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     except OSError:
         repo_name = Path(repo_path).name
 
-    active_model = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
-    yield _log(f"LLM API: {active_model} (con fallback automático)")
+    active_provider = (provider_override or "").strip() or "google"
+    active_model    = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
+    yield _log(f"LLM: {active_provider} / {active_model}")
     yield _progress(40)
 
     yield _log("Construyendo prompt...")
@@ -294,6 +297,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             repo_scan, template_content, locked_sections,
             api_key_override=api_key_override,
             model_override=model_override,
+            provider_override=provider_override,
         )
     except ValueError as exc:
         yield _error(f"Error de configuración: {exc}")

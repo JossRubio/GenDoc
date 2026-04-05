@@ -35,6 +35,7 @@ const ui = {
   btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
   btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
   // LLM config
+  providerSelect:         document.getElementById("providerSelect"),
   apiKeyInput:            document.getElementById("apiKeyInput"),
   btnToggleApiKey:        document.getElementById("btnToggleApiKey"),
   apiKeyEyeIcon:          document.getElementById("apiKeyEyeIcon"),
@@ -148,6 +149,18 @@ function setDocTypeEnabled(enabled) {
 
 // ── LLM config ───────────────────────────────────────────────────────
 
+// Auto-detect provider from key prefix and sync the selector
+function detectProvider(key) {
+  if (key.startsWith("sk-ant-")) return "anthropic";
+  if (key.startsWith("sk-"))     return "openai";
+  return "google";
+}
+
+ui.apiKeyInput.addEventListener("input", () => {
+  const key = ui.apiKeyInput.value.trim();
+  if (key) ui.providerSelect.value = detectProvider(key);
+});
+
 ui.btnToggleApiKey.addEventListener("click", () => {
   const isHidden = ui.apiKeyInput.type === "password";
   ui.apiKeyInput.type = isHidden ? "text" : "password";
@@ -176,7 +189,7 @@ async function loadModels() {
     const resp = await fetch("/api/models", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ api_key: apiKey }),
+      body:    JSON.stringify({ api_key: apiKey, provider: ui.providerSelect.value }),
     });
     const data = await resp.json();
 
@@ -435,19 +448,21 @@ async function generate() {
   try {
     const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
     const modelOverride    = ui.modelSelect.value.trim() || null;
+    const providerOverride = apiKeyOverride ? ui.providerSelect.value : null;
 
     const resp = await fetch("/api/generate", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        repo_path:        repoPath,
-        template_path:    templatePath,
-        doc_type:         selectedDocType(),
-        primary_color:    ui.colorPrimary.value,
-        secondary_color:  ui.colorSecondary.value,
-        locked_sections:  getLockedSections(),
-        api_key_override: apiKeyOverride,
-        model_override:   modelOverride,
+        repo_path:         repoPath,
+        template_path:     templatePath,
+        doc_type:          selectedDocType(),
+        primary_color:     ui.colorPrimary.value,
+        secondary_color:   ui.colorSecondary.value,
+        locked_sections:   getLockedSections(),
+        api_key_override:  apiKeyOverride,
+        model_override:    modelOverride,
+        provider_override: providerOverride,
       }),
     });
 
