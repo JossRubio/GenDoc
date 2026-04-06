@@ -285,26 +285,68 @@ function renderSectionsPanel(sections) {
   }
 
   sections.forEach((title, idx) => {
-    const id = `sec-${idx}`;
+    const row = document.createElement("div");
+    row.className = "gd-section-item";
 
-    const item = document.createElement("label");
-    item.className = "gd-section-item";
-    item.htmlFor   = id;
+    // ── Edit checkbox + label ──────────────────────────────────────
+    const editId = `sec-edit-${idx}`;
+    const editCb = document.createElement("input");
+    editCb.type            = "checkbox";
+    editCb.id              = editId;
+    editCb.checked         = true;
+    editCb.className       = "gd-section-cb";
+    editCb.dataset.section = title;
+    editCb.dataset.role    = "edit";
 
-    const checkbox = document.createElement("input");
-    checkbox.type    = "checkbox";
-    checkbox.id      = id;
-    checkbox.checked = true;                // checked = system will edit this section
-    checkbox.className = "gd-section-cb";
-    checkbox.dataset.section = title;
+    const nameLabel = document.createElement("label");
+    nameLabel.htmlFor     = editId;
+    nameLabel.className   = "gd-section-title";
+    nameLabel.textContent = title;
 
-    const text = document.createElement("span");
-    text.className   = "gd-section-title";
-    text.textContent = title;
+    // ── Table checkbox ─────────────────────────────────────────────
+    const tableId = `sec-tbl-${idx}`;
+    const tableCb = document.createElement("input");
+    tableCb.type            = "checkbox";
+    tableCb.id              = tableId;
+    tableCb.checked         = false;
+    tableCb.className       = "gd-section-enrich-cb";
+    tableCb.dataset.section = title;
+    tableCb.dataset.role    = "table";
 
-    item.appendChild(checkbox);
-    item.appendChild(text);
-    ui.sectionsList.appendChild(item);
+    const tableLabel = document.createElement("label");
+    tableLabel.htmlFor   = tableId;
+    tableLabel.className = "gd-section-enrich-label";
+    tableLabel.title     = "Incluir tabla en esta sección";
+
+    // ── Diagram checkbox ───────────────────────────────────────────
+    const diagId = `sec-diag-${idx}`;
+    const diagCb = document.createElement("input");
+    diagCb.type            = "checkbox";
+    diagCb.id              = diagId;
+    diagCb.checked         = false;
+    diagCb.className       = "gd-section-enrich-cb";
+    diagCb.dataset.section = title;
+    diagCb.dataset.role    = "diagram";
+
+    const diagLabel = document.createElement("label");
+    diagLabel.htmlFor   = diagId;
+    diagLabel.className = "gd-section-enrich-label";
+    diagLabel.title     = "Incluir diagrama en esta sección";
+
+    // Disable enrichment checkboxes when edit is unchecked
+    editCb.addEventListener("change", () => {
+      tableCb.disabled = !editCb.checked;
+      diagCb.disabled  = !editCb.checked;
+      if (!editCb.checked) { tableCb.checked = false; diagCb.checked = false; }
+    });
+
+    row.appendChild(editCb);
+    row.appendChild(nameLabel);
+    row.appendChild(tableCb);
+    row.appendChild(tableLabel);
+    row.appendChild(diagCb);
+    row.appendChild(diagLabel);
+    ui.sectionsList.appendChild(row);
   });
 
   ui.sectionsPanelWrap.style.display = "block";
@@ -312,15 +354,27 @@ function renderSectionsPanel(sections) {
 
 /**
  * Returns the list of section titles the user wants to LOCK (not edited).
- * These are sections whose checkbox is unchecked.
  */
 function getLockedSections() {
-  const checkboxes = ui.sectionsList.querySelectorAll(".gd-section-cb");
   const locked = [];
-  checkboxes.forEach(cb => {
+  ui.sectionsList.querySelectorAll(".gd-section-cb[data-role='edit']").forEach(cb => {
     if (!cb.checked) locked.push(cb.dataset.section);
   });
   return locked.length > 0 ? locked : null;
+}
+
+/**
+ * Returns a dict { sectionTitle: ["table","diagram"] } for sections where
+ * at least one enrichment (table / diagram) is checked.
+ */
+function getSectionEnrichments() {
+  const result = {};
+  ui.sectionsList.querySelectorAll(".gd-section-enrich-cb:checked").forEach(cb => {
+    const sec = cb.dataset.section;
+    if (!result[sec]) result[sec] = [];
+    result[sec].push(cb.dataset.role);   // "table" or "diagram"
+  });
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 async function loadTemplateSections(templatePath) {
@@ -351,12 +405,25 @@ async function loadTemplateSections(templatePath) {
   }
 }
 
-// Select / deselect all
+// Select / deselect all (edit column only)
 ui.btnSelectAllSections.addEventListener("click", () => {
-  ui.sectionsList.querySelectorAll(".gd-section-cb").forEach(cb => cb.checked = true);
+  ui.sectionsList.querySelectorAll(".gd-section-cb[data-role='edit']").forEach(cb => {
+    cb.checked = true;
+    // re-enable enrichment checkboxes
+    const idx = cb.id.replace("sec-edit-", "");
+    document.getElementById(`sec-tbl-${idx}`).disabled  = false;
+    document.getElementById(`sec-diag-${idx}`).disabled = false;
+  });
 });
 ui.btnDeselectAllSections.addEventListener("click", () => {
-  ui.sectionsList.querySelectorAll(".gd-section-cb").forEach(cb => cb.checked = false);
+  ui.sectionsList.querySelectorAll(".gd-section-cb[data-role='edit']").forEach(cb => {
+    cb.checked = false;
+    const idx = cb.id.replace("sec-edit-", "");
+    const tbl  = document.getElementById(`sec-tbl-${idx}`);
+    const diag = document.getElementById(`sec-diag-${idx}`);
+    tbl.checked = false;  tbl.disabled  = true;
+    diag.checked = false; diag.disabled = true;
+  });
 });
 
 // ── SSE stream consumer ──────────────────────────────────────────────
@@ -454,15 +521,16 @@ async function generate() {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        repo_path:         repoPath,
-        template_path:     templatePath,
-        doc_type:          selectedDocType(),
-        primary_color:     ui.colorPrimary.value,
-        secondary_color:   ui.colorSecondary.value,
-        locked_sections:   getLockedSections(),
-        api_key_override:  apiKeyOverride,
-        model_override:    modelOverride,
-        provider_override: providerOverride,
+        repo_path:            repoPath,
+        template_path:        templatePath,
+        doc_type:             selectedDocType(),
+        primary_color:        ui.colorPrimary.value,
+        secondary_color:      ui.colorSecondary.value,
+        locked_sections:      getLockedSections(),
+        section_enrichments:  getSectionEnrichments(),
+        api_key_override:     apiKeyOverride,
+        model_override:       modelOverride,
+        provider_override:    providerOverride,
       }),
     });
 

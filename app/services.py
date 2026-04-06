@@ -236,6 +236,7 @@ def generate_documentation_stream(
     primary_color: str | None = None,
     secondary_color: str | None = None,
     locked_sections: list[str] | None = None,
+    section_enrichments: dict | None = None,
     api_key_override: str | None = None,
     model_override: str | None = None,
     provider_override: str | None = None,
@@ -253,7 +254,7 @@ def generate_documentation_stream(
     # always closes cleanly instead of leaving the browser hanging.
     try:
         yield from _run(repo_path, template_path, doc_type, primary_color,
-                        secondary_color, locked_sections,
+                        secondary_color, locked_sections, section_enrichments,
                         api_key_override, model_override, provider_override)
     except Exception as exc:
         yield _error(
@@ -265,6 +266,7 @@ def generate_documentation_stream(
 def _run(repo_path: str, template_path: str | None, doc_type: str,
          primary_color: str | None, secondary_color: str | None,
          locked_sections: list[str] | None = None,
+         section_enrichments: dict | None = None,
          api_key_override: str | None = None,
          model_override: str | None = None,
          provider_override: str | None = None):
@@ -354,6 +356,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     try:
         markdown = generator.generate(
             repo_scan, template_content, locked_sections,
+            section_enrichments=section_enrichments,
             api_key_override=api_key_override,
             model_override=model_override,
             provider_override=provider_override,

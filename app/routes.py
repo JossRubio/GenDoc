@@ -74,13 +74,16 @@ def api_generate():
     doc_type         = (body.get("doc_type")          or "").strip() or None
     primary_color    = (body.get("primary_color")    or "").strip() or None
     secondary_color  = (body.get("secondary_color")  or "").strip() or None
-    locked_sections  = body.get("locked_sections")   # list[str] | None
-    api_key_override  = (body.get("api_key_override")  or "").strip() or None
-    model_override    = (body.get("model_override")    or "").strip() or None
-    provider_override = (body.get("provider_override") or "").strip() or None
+    locked_sections     = body.get("locked_sections")      # list[str] | None
+    section_enrichments = body.get("section_enrichments")  # dict[str, list[str]] | None
+    api_key_override    = (body.get("api_key_override")  or "").strip() or None
+    model_override      = (body.get("model_override")    or "").strip() or None
+    provider_override   = (body.get("provider_override") or "").strip() or None
 
     if not isinstance(locked_sections, list):
         locked_sections = None
+    if not isinstance(section_enrichments, dict):
+        section_enrichments = None
 
     if not repo_path:
         def immediate_error():
@@ -90,7 +93,7 @@ def api_generate():
     def event_stream():
         for event in generate_documentation_stream(repo_path, template_path, doc_type,
                                                     primary_color, secondary_color,
-                                                    locked_sections,
+                                                    locked_sections, section_enrichments,
                                                     api_key_override, model_override,
                                                     provider_override):
             # When the document is ready, mint a download token and include it

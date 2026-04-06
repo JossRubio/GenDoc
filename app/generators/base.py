@@ -72,21 +72,24 @@ class BaseGenerator:
         repo_scan: RepoScan,
         template_content: str | None = None,
         locked_sections: list[str] | None = None,
+        section_enrichments: dict | None = None,
     ) -> str:
         """
         Assemble the full prompt for this document type.
 
         Parameters
         ----------
-        repo_scan        : RepoScan
+        repo_scan            : RepoScan
             Scanned repository data.
-        template_content : str | None
+        template_content     : str | None
             Raw text of a user-supplied template document.
-        locked_sections  : list[str] | None
-            Section titles that must be reproduced verbatim from the template
-            without any modification. Only meaningful when *template_content*
-            is provided. Sections not in this list will be generated/adapted
-            by the LLM.
+        locked_sections      : list[str] | None
+            Section titles that must be reproduced verbatim from the template.
+        section_enrichments  : dict[str, list[str]] | None
+            Maps section title → list of enrichment types requested.
+            Supported values: ``"table"``, ``"diagram"``.
+            When provided, the LLM is instructed to include those elements
+            in the corresponding sections.
 
         Override this method in a subclass only when the default
         structure is not appropriate for that document type.
@@ -135,6 +138,28 @@ class BaseGenerator:
                 "código del repositorio.\n\n"
             )
 
+        # Build per-section enrichment instructions
+        enrichment_block = ""
+        if section_enrichments:
+            lines: list[str] = []
+            _labels = {"table": "una tabla Markdown", "diagram": "un diagrama Mermaid"}
+            for section, types in section_enrichments.items():
+                what = " y ".join(_labels[t] for t in types if t in _labels)
+                if what:
+                    lines.append(
+                        f'  - En la sección "**{section}**" incluye {what}.'
+                    )
+            if lines:
+                enrichment_block = (
+                    "## Elementos a incluir por sección\n\n"
+                    "Para las secciones indicadas a continuación, asegúrate de "
+                    "incorporar los elementos especificados (tabla y/o diagrama). "
+                    "Usa el formato Markdown estándar para tablas y las etiquetas "
+                    "[DIAGRAM]…[/DIAGRAM] para diagramas Mermaid:\n\n"
+                    + "\n".join(lines)
+                    + "\n\n"
+                )
+
         return (
             "Eres un experto en documentación de software. "
             "Tu tarea es generar documentación profesional en Markdown "
@@ -144,6 +169,7 @@ class BaseGenerator:
             "## Estructura del documento\n\n"
             f"{structure_instruction}\n\n"
             f"{locked_block}"
+            f"{enrichment_block}"
             "## Instrucciones generales\n\n"
             "- Redacta íntegramente en español.\n"
             "- Basa cada afirmación en el código real del repositorio; "
@@ -163,6 +189,7 @@ class BaseGenerator:
         template_content: str | None = None,
         locked_sections: list[str] | None = None,
         *,
+        section_enrichments: dict | None = None,
         api_key_override: str | None = None,
         model_override: str | None = None,
         provider_override: str | None = None,
@@ -186,7 +213,8 @@ class BaseGenerator:
         RuntimeError — API / network / response errors.
         """
         try:
-            prompt = self.build_prompt(repo_scan, template_content, locked_sections)
+            prompt = self.build_prompt(repo_scan, template_content, locked_sections,
+                                       section_enrichments)
         except Exception as exc:
             raise RuntimeError(
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"

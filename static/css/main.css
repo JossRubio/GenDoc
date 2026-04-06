@@ -647,13 +647,14 @@ body {
   transition: background 0.25s, border-color 0.25s;
 }
 
+/* Each section row: 3-column grid matching the header */
 .gd-section-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 52px 52px;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.3rem 0.25rem;
+  gap: 0.25rem;
+  padding: 0.28rem 0.25rem;
   border-radius: 6px;
-  cursor: pointer;
   transition: background 0.15s;
 }
 
@@ -661,11 +662,24 @@ body {
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* Edit (lock) checkbox — sits at the very left of the name cell */
 .gd-section-cb {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   accent-color: var(--gd-primary);
+  cursor: pointer;
+  margin-right: 0.35rem;
+  /* keep it inline with the label — both in same cell via label flex */
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Name cell: checkbox + label side by side */
+.gd-section-item > label.gd-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   cursor: pointer;
 }
 
@@ -674,6 +688,26 @@ body {
   color: var(--gd-log-color);
   line-height: 1.3;
   transition: color 0.25s;
+}
+
+/* Enrichment checkbox cells (table / diagram columns) */
+.gd-section-enrich-cb {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--gd-primary);
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+}
+
+.gd-section-enrich-cb:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+/* The empty label next to each enrichment cb (for click area) */
+.gd-section-enrich-label {
+  display: none; /* not needed visually — checkbox alone is enough */
 }
 
 [data-theme="dark"] .gd-sections-panel {
