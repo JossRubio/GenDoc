@@ -288,7 +288,15 @@ function renderSectionsPanel(sections) {
     const row = document.createElement("div");
     row.className = "gd-section-item";
 
-    // ── Edit checkbox + label ──────────────────────────────────────
+    // ── Col 1: section name ────────────────────────────────────────
+    const nameCell = document.createElement("div");
+    nameCell.className = "gd-section-name-cell";
+    const nameSpan = document.createElement("span");
+    nameSpan.className   = "gd-section-title";
+    nameSpan.textContent = title;
+    nameCell.appendChild(nameSpan);
+
+    // ── Col 2: Texto / edit checkbox ───────────────────────────────
     const editId = `sec-edit-${idx}`;
     const editCb = document.createElement("input");
     editCb.type            = "checkbox";
@@ -298,12 +306,15 @@ function renderSectionsPanel(sections) {
     editCb.dataset.section = title;
     editCb.dataset.role    = "edit";
 
-    const nameLabel = document.createElement("label");
-    nameLabel.htmlFor     = editId;
-    nameLabel.className   = "gd-section-title";
-    nameLabel.textContent = title;
+    const editCell = document.createElement("div");
+    editCell.className = "gd-enrich-cell";
+    const editLabel = document.createElement("label");
+    editLabel.htmlFor  = editId;
+    editLabel.title    = "Generar / editar texto de esta sección";
+    editCell.appendChild(editCb);
+    editCell.appendChild(editLabel);
 
-    // ── Table checkbox ─────────────────────────────────────────────
+    // ── Col 3: Tabla checkbox ──────────────────────────────────────
     const tableId = `sec-tbl-${idx}`;
     const tableCb = document.createElement("input");
     tableCb.type            = "checkbox";
@@ -313,12 +324,15 @@ function renderSectionsPanel(sections) {
     tableCb.dataset.section = title;
     tableCb.dataset.role    = "table";
 
+    const tableCell = document.createElement("div");
+    tableCell.className = "gd-enrich-cell";
     const tableLabel = document.createElement("label");
-    tableLabel.htmlFor   = tableId;
-    tableLabel.className = "gd-section-enrich-label";
-    tableLabel.title     = "Incluir tabla en esta sección";
+    tableLabel.htmlFor = tableId;
+    tableLabel.title   = "Incluir tabla en esta sección";
+    tableCell.appendChild(tableCb);
+    tableCell.appendChild(tableLabel);
 
-    // ── Diagram checkbox ───────────────────────────────────────────
+    // ── Col 4: Diagrama checkbox ───────────────────────────────────
     const diagId = `sec-diag-${idx}`;
     const diagCb = document.createElement("input");
     diagCb.type            = "checkbox";
@@ -328,24 +342,25 @@ function renderSectionsPanel(sections) {
     diagCb.dataset.section = title;
     diagCb.dataset.role    = "diagram";
 
+    const diagCell = document.createElement("div");
+    diagCell.className = "gd-enrich-cell";
     const diagLabel = document.createElement("label");
-    diagLabel.htmlFor   = diagId;
-    diagLabel.className = "gd-section-enrich-label";
-    diagLabel.title     = "Incluir diagrama en esta sección";
+    diagLabel.htmlFor = diagId;
+    diagLabel.title   = "Incluir diagrama en esta sección";
+    diagCell.appendChild(diagCb);
+    diagCell.appendChild(diagLabel);
 
-    // Disable enrichment checkboxes when edit is unchecked
+    // Disable enrichment checkboxes when edit (Texto) is unchecked
     editCb.addEventListener("change", () => {
       tableCb.disabled = !editCb.checked;
       diagCb.disabled  = !editCb.checked;
       if (!editCb.checked) { tableCb.checked = false; diagCb.checked = false; }
     });
 
-    row.appendChild(editCb);
-    row.appendChild(nameLabel);
-    row.appendChild(tableCb);
-    row.appendChild(tableLabel);
-    row.appendChild(diagCb);
-    row.appendChild(diagLabel);
+    row.appendChild(nameCell);
+    row.appendChild(editCell);
+    row.appendChild(tableCell);
+    row.appendChild(diagCell);
     ui.sectionsList.appendChild(row);
   });
 
