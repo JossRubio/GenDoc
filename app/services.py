@@ -65,6 +65,8 @@ def browse_file() -> str | None:
             ("Texto", "*.txt"),
             ("Markdown", "*.md"),
             ("Word", "*.docx"),
+            ("PDF", "*.pdf"),
+            ("PowerPoint", "*.pptx"),
         ],
     )
     root.destroy()
@@ -85,6 +87,8 @@ def extract_template_sections(template_path: str) -> tuple[list[str], str | None
     -----------------
     .md / .txt  — Markdown headings (lines starting with one or more '#')
     .docx       — Paragraphs whose Word style name begins with "Heading"
+    .pdf        — Lines that match a heading pattern extracted via pypdf
+    .pptx       — Slide title placeholder text extracted via python-pptx
     """
     p = Path(template_path)
 
@@ -107,6 +111,61 @@ def extract_template_sections(template_path: str) -> tuple[list[str], str | None
         except Exception as exc:
             return [], f"No se pudo leer el archivo .docx: {exc}"
 
+    if ext == ".pptx":
+        try:
+            from pptx import Presentation as _Prs
+            from pptx.enum.shapes import PP_PLACEHOLDER
+            prs  = _Prs(str(p))
+            seen_set: set[str] = set()
+            sections: list[str] = []
+            for slide in prs.slides:
+                for shape in slide.placeholders:
+                    ph_type = shape.placeholder_format.type
+                    if ph_type in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE):
+                        title = shape.text.strip()
+                        if title and title not in seen_set:
+                            seen_set.add(title)
+                            sections.append(title)
+                        break
+            return sections, None
+        except ImportError:
+            return [], "python-pptx no está instalado. Ejecuta: pip install python-pptx"
+        except Exception as exc:
+            return [], f"No se pudo leer el archivo .pptx: {exc}"
+
+    if ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+            reader   = PdfReader(str(p))
+            raw_text = "\n".join(
+                (page.extract_text() or "") for page in reader.pages
+            )
+        except ImportError:
+            return [], "pypdf no está instalado. Ejecuta: pip install pypdf"
+        except Exception as exc:
+            return [], f"No se pudo leer el archivo .pdf: {exc}"
+
+        import re as _re
+        heading_re = _re.compile(r"^#{1,4}\s+(.+)", _re.MULTILINE)
+        seen_set_pdf: set[str] = set()
+        sections_pdf: list[str] = []
+        for m in heading_re.finditer(raw_text):
+            title = m.group(1).strip()
+            if title and title not in seen_set_pdf:
+                seen_set_pdf.add(title)
+                sections_pdf.append(title)
+
+        # If no Markdown headings found, fall back to ALL-CAPS short lines as headings
+        if not sections_pdf:
+            for line in raw_text.splitlines():
+                stripped = line.strip()
+                if stripped and stripped.isupper() and 3 <= len(stripped) <= 80:
+                    if stripped not in seen_set_pdf:
+                        seen_set_pdf.add(stripped)
+                        sections_pdf.append(stripped)
+
+        return sections_pdf, None
+
     # .md / .txt — detect Markdown headings
     try:
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -115,15 +174,15 @@ def extract_template_sections(template_path: str) -> tuple[list[str], str | None
 
     import re
     heading_re = re.compile(r"^#{1,4}\s+(.+)", re.MULTILINE)
-    seen_set: set[str] = set()
-    sections: list[str] = []
+    seen_set_md: set[str] = set()
+    sections_md: list[str] = []
     for m in heading_re.finditer(text):
         title = m.group(1).strip()
-        if title and title not in seen_set:
-            seen_set.add(title)
-            sections.append(title)
+        if title and title not in seen_set_md:
+            seen_set_md.add(title)
+            sections_md.append(title)
 
-    return sections, None
+    return sections_md, None
 
 
 # ── Template reader ───────────────────────────────────────────────────
@@ -318,19 +377,31 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
 
     yield _progress(90)
 
-    # ── 5. Resolve output path ───────────────────────────────────────
+    # ── 5. Resolve output format + path ─────────────────────────────
+    output_fmt = "docx"
+    if template_path:
+        _tpl_ext = Path(template_path).suffix.lower()
+        if _tpl_ext == ".pdf":
+            output_fmt = "pdf"
+        elif _tpl_ext == ".pptx":
+            output_fmt = "pptx"
+
     output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
 
     try:
-        output_path = str(generator.output_path(repo_name, output_dir))
+        output_path = str(generator.output_path(repo_name, output_dir, fmt=output_fmt))
     except Exception as exc:
         yield _error(f"No se pudo determinar la ruta de salida: {exc}")
         return
 
-    yield _log("Contenido generado. Convirtiendo a documento Word...", level="success")
+    _fmt_labels = {"docx": "Word (.docx)", "pdf": "PDF (.pdf)", "pptx": "PowerPoint (.pptx)"}
+    yield _log(
+        f"Contenido generado. Convirtiendo a {_fmt_labels.get(output_fmt, output_fmt)}...",
+        level="success",
+    )
     yield _progress(93)
 
-    # ── 6. Convert Markdown → .docx ──────────────────────────────────
+    # ── 6. Convert Markdown → output format ──────────────────────────
     import concurrent.futures as _cf
 
     _CONVERT_TIMEOUT = 60  # seconds
@@ -341,27 +412,36 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     if secondary_color:
         kwargs["secondary_color"] = secondary_color
 
+    if output_fmt == "pptx":
+        from . import md_to_pptx
+        _pptx_kwargs = {k: v for k, v in kwargs.items() if k in ("primary_color", "secondary_color")}
+        _converter = lambda: md_to_pptx.convert(markdown, output_path, **_pptx_kwargs)  # noqa: E731
+    elif output_fmt == "pdf":
+        from . import md_to_pdf
+        _converter = lambda: md_to_pdf.convert(markdown, output_path, **kwargs)  # noqa: E731
+    else:
+        _converter = lambda: md_to_docx.convert(markdown, output_path, **kwargs)  # noqa: E731
+
     try:
         with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
-            _future = _pool.submit(md_to_docx.convert, markdown, output_path, **kwargs)
+            _future = _pool.submit(_converter)
             try:
                 final_path = _future.result(timeout=_CONVERT_TIMEOUT)
             except _cf.TimeoutError:
                 _future.cancel()
                 yield _error(
-                    f"La conversión a Word superó el límite de {_CONVERT_TIMEOUT} segundos. "
-                    "Intenta de nuevo; si el problema persiste, el repositorio puede ser "
-                    "demasiado grande o los servicios de diagramas no están disponibles."
+                    f"La conversión superó el límite de {_CONVERT_TIMEOUT} segundos. "
+                    "Intenta de nuevo o verifica que el repositorio no sea demasiado grande."
                 )
                 return
     except RuntimeError as exc:
-        yield _error(f"Error al crear el documento Word: {exc}")
+        yield _error(f"Error al crear el documento: {exc}")
         return
     except Exception as exc:
         yield _error(f"Error inesperado al exportar el documento: {exc}")
         return
 
     filename = Path(output_path).name
-    yield _log(f"Documento Word listo: {filename}", level="success")
+    yield _log(f"Documento listo: {filename}", level="success")
     yield _progress(100)
     yield _ready(output_path=str(final_path), filename=filename)

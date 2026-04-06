@@ -262,9 +262,9 @@ class BaseGenerator:
 
     # ── Output path helpers ───────────────────────────────────────────
 
-    def output_filename(self, repo_name: str) -> str:
+    def output_filename(self, repo_name: str, fmt: str = "docx") -> str:
         suffix = self.FILE_SUFFIX or self.DOC_TYPE
-        return f"{repo_name}_{suffix}.docx"
+        return f"{repo_name}_{suffix}.{fmt}"
 
-    def output_path(self, repo_name: str, output_dir: str) -> Path:
-        return Path(output_dir) / self.output_filename(repo_name)
+    def output_path(self, repo_name: str, output_dir: str, fmt: str = "docx") -> Path:
+        return Path(output_dir) / self.output_filename(repo_name, fmt)
