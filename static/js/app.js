@@ -272,12 +272,12 @@ async function browseFile() {
 // ── Template sections panel ──────────────────────────────────────────
 
 function clearSectionsPanel() {
-  ui.sectionsList.innerHTML = "";
+  ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
   ui.sectionsPanelWrap.style.display = "none";
 }
 
 function renderSectionsPanel(sections) {
-  ui.sectionsList.innerHTML = "";
+  ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
 
   if (!sections || sections.length === 0) {
     ui.sectionsPanelWrap.style.display = "none";

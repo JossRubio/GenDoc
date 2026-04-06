@@ -634,13 +634,19 @@ body {
   opacity: 0.75;
 }
 
-/* Column header row — 4 columns, horizontal padding matches items */
+/* Column header row — sticky inside the scrollable panel */
 .gd-sections-cols-header {
   display: grid;
   grid-template-columns: 1fr 58px 58px 58px;
   align-items: center;
-  padding: 0.18rem 0.25cm;
-  margin-bottom: 0.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--gd-log-bg);
+  padding: 0.35rem 0.25cm 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 0.15rem;
+  transition: background 0.25s;
 }
 
 .gd-sections-col-label-name {
@@ -672,13 +678,14 @@ body {
   transition: background 0.25s, border-color 0.25s;
 }
 
-/* Each section row — 4 columns: name (flex) + 3 fixed checkbox cols */
+/* Each section row — same 4-column grid as the header */
 .gd-section-item {
   display: grid;
   grid-template-columns: 1fr 58px 58px 58px;
   align-items: center;
-  margin: 0.25cm;
-  padding: 0.18rem 0;
+  padding: 0.25cm;
+  padding-top: 0.18rem;
+  padding-bottom: 0.18rem;
   border-radius: 6px;
   transition: background 0.15s;
 }
@@ -737,6 +744,11 @@ body {
 [data-theme="dark"] .gd-sections-panel {
   background: var(--gd-log-bg);
   border-color: var(--gd-log-border);
+}
+
+[data-theme="dark"] .gd-sections-cols-header {
+  background: var(--gd-log-bg);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
 /* ── LLM config ──────────────────────────────────────────────────── */
