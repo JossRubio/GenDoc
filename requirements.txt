@@ -8,3 +8,7 @@ python-pptx>=1.0.0
 pypdf>=4.0.0
 docx2pdf>=0.1.8
 mistletoe>=1.3.0
+waitress>=3.0.0
+# Build tools (only needed to create the .exe)
+# pyinstaller>=6.0.0
+# pillow>=10.0.0
