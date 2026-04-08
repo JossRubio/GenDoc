@@ -16,4 +16,4 @@ if __name__ == "__main__":
     if not os.environ.get("WERKZEUG_RUN_MAIN"):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    app.run(debug=True, port=port)  
+    app.run(debug=True, port=port)

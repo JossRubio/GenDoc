@@ -29,8 +29,12 @@ RuntimeError — if the output directory does not exist or cannot be written.
 from __future__ import annotations
 
 import copy
+import os
 import re
+import shutil
 import struct
+import subprocess
+import tempfile
 import zlib
 from datetime import datetime
 from pathlib import Path
@@ -466,10 +470,74 @@ def _table_block(doc: Document, rows: list[str], primary_rgb: RGBColor,
     doc.add_paragraph()
 
 
+# ── Diagram rendering ─────────────────────────────────────────────────
+
+def _find_mmdc() -> str | None:
+    """Return the path to the mmdc executable, or None if not found."""
+    for candidate in ("mmdc", "mmdc.cmd", "mmdc.ps1"):
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return None
+
+
+def _render_mermaid_png(mermaid_code: str) -> bytes | None:
+    """
+    Render Mermaid code to a PNG using the mmdc CLI (Mermaid CLI).
+    Returns PNG bytes on success, None if mmdc is unavailable or rendering fails.
+
+    Install mmdc with:  npm install -g @mermaid-js/mermaid-cli
+    """
+    mmdc_path = _find_mmdc()
+    if not mmdc_path:
+        return None
+
+    tmp_dir = tempfile.mkdtemp(prefix="gendoc_mmd_")
+    in_file  = os.path.join(tmp_dir, "diagram.mmd")
+    out_file = os.path.join(tmp_dir, "diagram.png")
+    try:
+        with open(in_file, "w", encoding="utf-8") as fh:
+            fh.write(mermaid_code)
+
+        result = subprocess.run(
+            [mmdc_path, "-i", in_file, "-o", out_file,
+             "-b", "white", "--width", "900", "--height", "600"],
+            capture_output=True,
+            timeout=25,
+        )
+        if result.returncode == 0 and os.path.exists(out_file):
+            with open(out_file, "rb") as fh:
+                return fh.read()
+    except Exception:
+        pass
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return None
+
+
 # ── Diagram block ────────────────────────────────────────────────────
 
 def _diagram_block(doc: Document, mermaid_code: str, secondary_rgb: RGBColor) -> None:
-    """Insert a Mermaid diagram as a labeled code block."""
+    """
+    Insert a Mermaid diagram into the document.
+
+    • If mmdc (Mermaid CLI) is available: renders to PNG and embeds as
+      a centred inline image — visible and resizable within Word.
+    • Otherwise: falls back to a labelled code block so the document
+      is still usable without Node.js installed.
+    """
+    png_bytes = _render_mermaid_png(mermaid_code)
+
+    if png_bytes:
+        img_para = doc.add_paragraph()
+        img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        img_para.paragraph_format.space_before = Pt(6)
+        img_para.paragraph_format.space_after  = Pt(4)
+        run = img_para.add_run()
+        run.add_picture(io.BytesIO(png_bytes), width=Inches(5.5))
+        return
+
+    # ── Fallback: labelled code block ─────────────────────────────
     label = doc.add_paragraph()
     label.paragraph_format.space_before = Pt(4)
     label.paragraph_format.space_after  = Pt(2)
