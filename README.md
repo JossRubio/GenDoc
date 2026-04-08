@@ -35,12 +35,28 @@ El documento resultante incluye:
 
 ## Cómo usarla
 
-### Requisitos
+### Opción A — Ejecutable (recomendada)
+
+1. Descarga la carpeta `dist/` o el archivo `GenDoc.exe`.
+2. Asegúrate de que el archivo `.env` esté en la **misma carpeta** que `GenDoc.exe` con tu API Key:
+   ```
+   GOOGLE_API_KEY=tu_api_key_aqui
+   ```
+3. Haz doble clic en **`GenDoc.exe`**.  
+   El navegador se abrirá automáticamente en `http://localhost:5000`.
+
+No se requiere Python ni ninguna dependencia adicional.
+
+---
+
+### Opción B — Desde el código fuente
+
+#### Requisitos
 
 - Python 3.10 o superior
 - Una API Key de [Google AI Studio](https://aistudio.google.com/) (Gemini)
 
-### Instalación
+#### Instalación
 
 ```bash
 # 1. Clonar o descargar el repositorio
@@ -55,12 +71,11 @@ source venv/bin/activate     # macOS / Linux
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Configurar la API Key
-#    Crear un archivo .env en la raíz del proyecto con el siguiente contenido:
+# 4. Configurar la API Key en el archivo .env
 GOOGLE_API_KEY=tu_api_key_aqui
 ```
 
-### Ejecución
+#### Ejecución
 
 ```bash
 python run.py
