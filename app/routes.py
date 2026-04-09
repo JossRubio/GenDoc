@@ -94,6 +94,9 @@ def api_generate():
     api_key_override    = (body.get("api_key_override")  or "").strip() or None
     model_override      = (body.get("model_override")    or "").strip() or None
     provider_override   = (body.get("provider_override") or "").strip() or None
+    lang                = (body.get("lang")              or "es").strip()
+    if lang not in ("es", "en"):
+        lang = "es"
 
     if not isinstance(locked_sections, list):
         locked_sections = None
@@ -110,7 +113,7 @@ def api_generate():
                                                     primary_color, secondary_color,
                                                     locked_sections, section_enrichments,
                                                     api_key_override, model_override,
-                                                    provider_override):
+                                                    provider_override, lang):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

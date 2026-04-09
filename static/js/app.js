@@ -769,6 +769,7 @@ async function generate() {
         api_key_override:     apiKeyOverride,
         model_override:       modelOverride,
         provider_override:    providerOverride,
+        lang:                 _lang,
       }),
     });
 

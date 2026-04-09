@@ -18,6 +18,91 @@ from .generators import DEFAULT_DOC_TYPE, get_generator
 from .repo_reader import scan
 
 
+# ── Backend message strings ───────────────────────────────────────────
+
+_MSG = {
+    "es": {
+        "doc_type":          "Tipo de documento",
+        "invalid_doc_type":  "Tipo de documento inválido",
+        "scanning_repo":     "Analizando repositorio",
+        "repo_read_error":   "No se pudo leer el repositorio",
+        "repo_scan_error":   "Error inesperado al escanear el repositorio",
+        "no_files":          (
+            "No se encontraron archivos de código fuente en el repositorio. "
+            "Verifica que la carpeta seleccionada sea la raíz del proyecto y "
+            "que contenga archivos con extensiones reconocidas (.py, .js, .ts, etc.)."
+        ),
+        "files_found":       "Archivos encontrados",
+        "files_skipped":     "archivo(s) omitido(s) (sin permisos de lectura o demasiado grandes).",
+        "total":             "Total",
+        "file_s":            ("archivo", "archivos"),
+        "loading_template":  "Cargando plantilla",
+        "template_ok":       "Plantilla cargada correctamente.",
+        "building_prompt":   "Construyendo prompt...",
+        "generating":        "Generando documentación. Esto puede tardar unos segundos...",
+        "config_error":      "Error de configuración",
+        "gen_error":         "Error al generar la documentación",
+        "gen_unexpected":    "Error inesperado al llamar al modelo",
+        "empty_response":    (
+            "El modelo devolvió una respuesta vacía. "
+            "Intenta de nuevo o revisa que el repositorio tenga contenido legible."
+        ),
+        "output_path_error": "No se pudo determinar la ruta de salida",
+        "converting":        "Contenido generado. Convirtiendo a",
+        "timeout_error":     (
+            "La conversión superó el límite de {t} segundos. "
+            "Intenta de nuevo o verifica que el repositorio no sea demasiado grande."
+        ),
+        "doc_error":         "Error al crear el documento",
+        "export_error":      "Error inesperado al exportar el documento",
+        "doc_ready":         "Documento listo",
+        "no_repo":           "No se especificó ningún repositorio.",
+    },
+    "en": {
+        "doc_type":          "Document type",
+        "invalid_doc_type":  "Invalid document type",
+        "scanning_repo":     "Scanning repository",
+        "repo_read_error":   "Could not read the repository",
+        "repo_scan_error":   "Unexpected error while scanning the repository",
+        "no_files":          (
+            "No source code files found in the repository. "
+            "Make sure the selected folder is the project root and "
+            "contains files with recognized extensions (.py, .js, .ts, etc.)."
+        ),
+        "files_found":       "Files found",
+        "files_skipped":     "file(s) skipped (no read permission or too large).",
+        "total":             "Total",
+        "file_s":            ("file", "files"),
+        "loading_template":  "Loading template",
+        "template_ok":       "Template loaded successfully.",
+        "building_prompt":   "Building prompt...",
+        "generating":        "Generating documentation. This may take a few seconds...",
+        "config_error":      "Configuration error",
+        "gen_error":         "Error generating documentation",
+        "gen_unexpected":    "Unexpected error calling the model",
+        "empty_response":    (
+            "The model returned an empty response. "
+            "Try again or check that the repository has readable content."
+        ),
+        "output_path_error": "Could not determine the output path",
+        "converting":        "Content generated. Converting to",
+        "timeout_error":     (
+            "Conversion exceeded the {t}-second limit. "
+            "Try again or check that the repository is not too large."
+        ),
+        "doc_error":         "Error creating the document",
+        "export_error":      "Unexpected error exporting the document",
+        "doc_ready":         "Document ready",
+        "no_repo":           "No repository was specified.",
+    },
+}
+
+
+def _m(lang: str, key: str) -> str:
+    """Return the message string for *key* in *lang*, falling back to Spanish."""
+    return _MSG.get(lang, _MSG["es"]).get(key, _MSG["es"][key])
+
+
 # ── SSE event constructors ────────────────────────────────────────────
 
 def _log(message: str, level: str = "info") -> dict:
@@ -240,6 +325,7 @@ def generate_documentation_stream(
     api_key_override: str | None = None,
     model_override: str | None = None,
     provider_override: str | None = None,
+    lang: str = "es",
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -255,12 +341,10 @@ def generate_documentation_stream(
     try:
         yield from _run(repo_path, template_path, doc_type, primary_color,
                         secondary_color, locked_sections, section_enrichments,
-                        api_key_override, model_override, provider_override)
+                        api_key_override, model_override, provider_override,
+                        lang)
     except Exception as exc:
-        yield _error(
-            f"Error interno inesperado: {exc}. "
-            "Por favor reporta este problema."
-        )
+        yield _error(f"{'Unexpected internal error' if lang == 'en' else 'Error interno inesperado'}: {exc}.")
 
 
 def _run(repo_path: str, template_path: str | None, doc_type: str,
@@ -269,73 +353,65 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
          section_enrichments: dict | None = None,
          api_key_override: str | None = None,
          model_override: str | None = None,
-         provider_override: str | None = None):
+         provider_override: str | None = None,
+         lang: str = "es"):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
     if not repo_path or not repo_path.strip():
-        yield _error("No se especificó ningún repositorio.")
+        yield _error(_m(lang, "no_repo"))
         return
 
     try:
         generator = get_generator(doc_type)
     except ValueError as exc:
-        yield _error(f"Tipo de documento inválido: {exc}")
+        yield _error(f"{_m(lang, 'invalid_doc_type')}: {exc}")
         return
 
-    yield _log(f"Tipo de documento: {generator.DISPLAY_NAME}")
+    yield _log(f"{_m(lang, 'doc_type')}: {generator.DISPLAY_NAME}")
     yield _progress(5)
 
     # ── 2. Scan repository ───────────────────────────────────────────
-    yield _log(f"Analizando repositorio: {repo_path}")
+    yield _log(f"{_m(lang, 'scanning_repo')}: {repo_path}")
 
     try:
         repo_scan = scan(repo_path)
     except ValueError as exc:
-        yield _error(f"No se pudo leer el repositorio. {exc}")
+        yield _error(f"{_m(lang, 'repo_read_error')}. {exc}")
         return
     except Exception as exc:
-        yield _error(
-            f"Error inesperado al escanear el repositorio: {exc}"
-        )
+        yield _error(f"{_m(lang, 'repo_scan_error')}: {exc}")
         return
 
     if repo_scan.total_files == 0:
-        yield _error(
-            "No se encontraron archivos de código fuente en el repositorio. "
-            "Verifica que la carpeta seleccionada sea la raíz del proyecto y "
-            "que contenga archivos con extensiones reconocidas (.py, .js, .ts, etc.)."
-        )
+        yield _error(_m(lang, "no_files"))
         return
 
-    yield _log(f"Archivos encontrados ({repo_scan.total_files}):")
+    yield _log(f"{_m(lang, 'files_found')} ({repo_scan.total_files}):")
     for f in repo_scan.files:
         yield _log(f"  \u2192 {f.relative_path}  ({f.extension})")
 
     if repo_scan.skipped:
         yield _log(
-            f"  {len(repo_scan.skipped)} archivo(s) omitido(s) "
-            "(sin permisos de lectura o demasiado grandes).",
+            f"  {len(repo_scan.skipped)} {_m(lang, 'files_skipped')}",
             level="warn",
         )
 
     size_kb = repo_scan.total_bytes / 1024
-    yield _log(
-        f"Total: {repo_scan.total_files} archivo"
-        f"{'s' if repo_scan.total_files != 1 else ''} | {size_kb:.1f} KB"
-    )
+    _fs = _m(lang, "file_s")
+    _word = _fs[1] if repo_scan.total_files != 1 else _fs[0]
+    yield _log(f"{_m(lang, 'total')}: {repo_scan.total_files} {_word} | {size_kb:.1f} KB")
     yield _progress(20)
 
     # ── 3. Load template ─────────────────────────────────────────────
     template_content: str | None = None
     if template_path:
-        yield _log(f"Cargando plantilla: {template_path}")
+        yield _log(f"{_m(lang, 'loading_template')}: {template_path}")
         template_content, err_msg = _read_template(template_path)
         if err_msg:
-            # Template errors are non-fatal: warn and continue without it
             yield _log(err_msg, level="warn")
         else:
-            yield _log("Plantilla cargada correctamente.", level="success")
+            yield _log(_m(lang, "template_ok"), level="success")
 
     yield _progress(30)
 
@@ -350,8 +426,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _log(f"LLM: {active_provider} / {active_model}")
     yield _progress(40)
 
-    yield _log("Construyendo prompt...")
-    yield _log("Generando documentación. Esto puede tardar unos segundos...")
+    yield _log(_m(lang, "building_prompt"))
+    yield _log(_m(lang, "generating"))
 
     try:
         markdown = generator.generate(
@@ -362,20 +438,17 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             provider_override=provider_override,
         )
     except ValueError as exc:
-        yield _error(f"Error de configuración: {exc}")
+        yield _error(f"{_m(lang, 'config_error')}: {exc}")
         return
     except RuntimeError as exc:
-        yield _error(f"Error al generar la documentación: {exc}")
+        yield _error(f"{_m(lang, 'gen_error')}: {exc}")
         return
     except Exception as exc:
-        yield _error(f"Error inesperado al llamar al modelo: {exc}")
+        yield _error(f"{_m(lang, 'gen_unexpected')}: {exc}")
         return
 
     if not markdown or not markdown.strip():
-        yield _error(
-            "El modelo devolvió una respuesta vacía. "
-            "Intenta de nuevo o revisa que el repositorio tenga contenido legible."
-        )
+        yield _error(_m(lang, "empty_response"))
         return
 
     yield _progress(90)
@@ -394,12 +467,12 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     try:
         output_path = str(generator.output_path(repo_name, output_dir, fmt=output_fmt))
     except Exception as exc:
-        yield _error(f"No se pudo determinar la ruta de salida: {exc}")
+        yield _error(f"{_m(lang, 'output_path_error')}: {exc}")
         return
 
     _fmt_labels = {"docx": "Word (.docx)", "pdf": "PDF (.pdf)", "pptx": "PowerPoint (.pptx)"}
     yield _log(
-        f"Contenido generado. Convirtiendo a {_fmt_labels.get(output_fmt, output_fmt)}...",
+        f"{_m(lang, 'converting')} {_fmt_labels.get(output_fmt, output_fmt)}...",
         level="success",
     )
     yield _progress(93)
@@ -432,19 +505,16 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
                 final_path = _future.result(timeout=_CONVERT_TIMEOUT)
             except _cf.TimeoutError:
                 _future.cancel()
-                yield _error(
-                    f"La conversión superó el límite de {_CONVERT_TIMEOUT} segundos. "
-                    "Intenta de nuevo o verifica que el repositorio no sea demasiado grande."
-                )
+                yield _error(_m(lang, "timeout_error").format(t=_CONVERT_TIMEOUT))
                 return
     except RuntimeError as exc:
-        yield _error(f"Error al crear el documento: {exc}")
+        yield _error(f"{_m(lang, 'doc_error')}: {exc}")
         return
     except Exception as exc:
-        yield _error(f"Error inesperado al exportar el documento: {exc}")
+        yield _error(f"{_m(lang, 'export_error')}: {exc}")
         return
 
     filename = Path(output_path).name
-    yield _log(f"Documento listo: {filename}", level="success")
+    yield _log(f"{_m(lang, 'doc_ready')}: {filename}", level="success")
     yield _progress(100)
     yield _ready(output_path=str(final_path), filename=filename)
