@@ -55,6 +55,10 @@ def _open_browser() -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────
 def main() -> None:
+    # Mark this process as the packaged exe so the frontend can enable
+    # the auto-shutdown UI (idle countdown popup).
+    os.environ["GENDOC_EXE"] = "1"
+
     try:
         from app import create_app
         flask_app = create_app(
@@ -81,7 +85,7 @@ def main() -> None:
     # ── Register shutdown hook & heartbeat watchdog ───────────────────
     # The watchdog runs in a daemon thread and calls os._exit(0) if no
     # heartbeat is received for HEARTBEAT_TIMEOUT seconds (browser closed).
-    HEARTBEAT_TIMEOUT = 20  # seconds
+    HEARTBEAT_TIMEOUT = 120  # seconds
 
     def _shutdown() -> None:
         os._exit(0)

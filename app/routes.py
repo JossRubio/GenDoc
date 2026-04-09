@@ -1,4 +1,5 @@
 import json
+import os
 import secrets
 import time
 
@@ -32,7 +33,7 @@ def register_shutdown(callback) -> None:
 
 @main.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", is_exe=bool(os.environ.get("GENDOC_EXE")))
 
 
 @main.route("/api/browse/folder", methods=["POST"])

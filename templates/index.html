@@ -13,6 +13,11 @@
     })();
   </script>
 
+  <!-- Runtime flags injected by the server -->
+  <script>
+    window.GENDOC_IS_EXE = {{ 'true' if is_exe else 'false' }};
+  </script>
+
   <!-- Bootstrap 5 (layout + reset only, we override visuals) -->
   <link
     rel="stylesheet"
@@ -272,6 +277,22 @@
     </p>
 
   </div><!-- /container -->
+
+  <!-- ── Auto-shutdown countdown modal (exe only) ──────────────────── -->
+  <div id="idleModal" class="gd-idle-overlay" style="display:none;" aria-modal="true" role="dialog">
+    <div class="gd-idle-box">
+      <div class="gd-idle-icon">⏱</div>
+      <p class="gd-idle-title">El servidor se cerrará automáticamente</p>
+      <p class="gd-idle-body">
+        No se detectó actividad. GenDoc se apagará en
+      </p>
+      <div class="gd-idle-countdown" id="idleCountdown">30</div>
+      <p class="gd-idle-body">segundos.</p>
+      <button id="btnIdleKeepAlive" class="gd-idle-btn">
+        Mantener activo
+      </button>
+    </div>
+  </div>
 
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

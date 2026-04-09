@@ -628,14 +628,97 @@ ui.templateInput.addEventListener("input", () => {
   if (!hasTemplate) clearSectionsPanel();
 });
 
-// ── Heartbeat (keeps GenDoc.exe alive while tab is open) ─────────────
+// ── Auto-shutdown / idle tracker (exe only) ──────────────────────────
+//
+// Flow:
+//   • While the user is active: heartbeat sent every 5 s → server stays alive.
+//   • After IDLE_WARN_MS (90 s) of no interaction: heartbeats stop, countdown
+//     modal appears with a 30-second timer.
+//   • "Mantener activo" resets everything.
+//   • If the countdown reaches 0 the server shuts down on its own (no more
+//     heartbeats for ≥ HEARTBEAT_TIMEOUT = 120 s total).
+//   • When NOT running as exe (window.GENDOC_IS_EXE === false) nothing happens.
 
-(function startHeartbeat() {
+(function initIdleShutdown() {
+  if (!window.GENDOC_IS_EXE) return;
+
+  const IDLE_WARN_MS  = 90_000;   // show popup after 90 s idle
+  const COUNTDOWN_SEC = 30;       // countdown duration shown in modal
+
+  const modal      = document.getElementById("idleModal");
+  const countdownEl= document.getElementById("idleCountdown");
+  const keepAlive  = document.getElementById("btnIdleKeepAlive");
+
+  let lastActivity  = Date.now();
+  let heartbeatActive = true;
+  let countdownVal  = COUNTDOWN_SEC;
+  let countdownTimer = null;
+
+  // ── Heartbeat sender ──────────────────────────────────────────────
   async function ping() {
     try { await fetch("/api/heartbeat", { method: "POST" }); } catch {}
   }
+
+  // Send first ping immediately, then every 5 s while active
   ping();
-  setInterval(ping, 5000);
+  setInterval(() => { if (heartbeatActive) ping(); }, 5000);
+
+  // ── Activity tracking ─────────────────────────────────────────────
+  function onActivity() {
+    lastActivity = Date.now();
+    if (!heartbeatActive) {
+      // User came back during countdown → cancel and reset
+      resetIdle();
+    }
+  }
+
+  ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"]
+    .forEach(evt => window.addEventListener(evt, onActivity, { passive: true }));
+
+  // ── Countdown modal ───────────────────────────────────────────────
+  function showCountdown() {
+    heartbeatActive  = false;
+    countdownVal     = COUNTDOWN_SEC;
+    countdownEl.textContent = countdownVal;
+    modal.style.display = "flex";
+
+    countdownTimer = setInterval(() => {
+      countdownVal -= 1;
+      countdownEl.textContent = countdownVal;
+      countdownEl.classList.toggle("urgent", countdownVal <= 10);
+      if (countdownVal <= 0) {
+        clearInterval(countdownTimer);
+        countdownEl.textContent = "0";
+        // Server will shut down on its own — show final message
+        countdownEl.closest(".gd-idle-box").querySelector(".gd-idle-title")
+          .textContent = "El servidor se ha cerrado.";
+        keepAlive.style.display = "none";
+      }
+    }, 1000);
+  }
+
+  function resetIdle() {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+    heartbeatActive = true;
+    lastActivity    = Date.now();
+    modal.style.display = "none";
+    // Restore modal text in case it was changed
+    modal.querySelector(".gd-idle-title").textContent =
+      "El servidor se cerrará automáticamente";
+    keepAlive.style.display = "";
+    ping(); // immediate ping to reset server-side timer
+  }
+
+  keepAlive.addEventListener("click", resetIdle);
+
+  // ── Idle checker (runs every second) ─────────────────────────────
+  setInterval(() => {
+    if (!heartbeatActive) return;   // already in countdown
+    if (Date.now() - lastActivity >= IDLE_WARN_MS) {
+      showCountdown();
+    }
+  }, 1000);
 })();
 
 // ── Init ─────────────────────────────────────────────────────────────
