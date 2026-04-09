@@ -98,6 +98,13 @@ _MSG = {
 }
 
 
+_DOC_TYPE_NAME: dict[str, dict[str, str]] = {
+    "technical":   {"es": "Documentación técnica",  "en": "Technical Documentation"},
+    "user_manual": {"es": "Manual de Usuario",       "en": "User Manual"},
+    "executive":   {"es": "Presentación Ejecutiva",  "en": "Executive Presentation"},
+}
+
+
 def _m(lang: str, key: str) -> str:
     """Return the message string for *key* in *lang*, falling back to Spanish."""
     return _MSG.get(lang, _MSG["es"]).get(key, _MSG["es"][key])
@@ -368,7 +375,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         yield _error(f"{_m(lang, 'invalid_doc_type')}: {exc}")
         return
 
-    yield _log(f"{_m(lang, 'doc_type')}: {generator.DISPLAY_NAME}")
+    _display = _DOC_TYPE_NAME.get(doc_type, {}).get(lang) or generator.DISPLAY_NAME
+    yield _log(f"{_m(lang, 'doc_type')}: {_display}")
     yield _progress(5)
 
     # ── 2. Scan repository ───────────────────────────────────────────
