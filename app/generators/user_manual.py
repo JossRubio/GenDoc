@@ -86,3 +86,63 @@ Reglas estrictas para los bloques de diagrama:
         "Solución de problemas comunes",
         "Glosario",
     ]
+
+    SECTIONS_EN = [
+        "Introduction and purpose of the tool",
+        "Prerequisites",
+        "Installation / access",
+        "Getting started",
+        "Step-by-step usage guide",
+        "Feature descriptions",
+        "Usage flow diagrams",
+        "Common use cases",
+        "Frequently asked questions (FAQ)",
+        "Troubleshooting",
+        "Glossary",
+    ]
+
+    PERSONA_EN = """\
+You are writing a user manual aimed at people who will use the application in their
+daily work. The reader is NOT a developer: they may have little or no technical
+experience. Their only interest is knowing how to use the tool to complete their tasks.
+
+Writing guidelines:
+- Use clear, simple and friendly language. Avoid technical jargon; if you must use
+  a specialised term, explain it on the spot.
+- Write in imperative mood and second person ("Click on…", "Enter your…",
+  "Select the option…").
+- Organise instructions in numbered, short and concrete steps.
+- Describe what the user SEES and DOES, not how the code works internally.
+- Anticipate common questions and explain what to do when something doesn't work as expected.
+- The tone is warm and supportive: the manual should feel like a guide accompanying
+  the user, not an engineering handbook."""
+
+    EXTRA_INSTRUCTIONS_EN = """\
+For the "Usage flow diagrams" section, generate between 2 and 4 Mermaid diagrams
+that help the user understand HOW TO USE the tool. Diagrams must be clear to people
+without technical knowledge.
+
+Priority diagram types for this document:
+- Navigation flow or steps the user follows to complete a main task
+- Decision diagram showing what to do in different scenarios (e.g. errors)
+- Sequence of steps for a key feature (installation, initial setup, typical use)
+- Map of features accessible from the main interface
+
+Each diagram must follow this exact structure:
+
+1. A short paragraph (in non-technical language) explaining what the diagram is for.
+2. The diagram block delimited by the [DIAGRAM] and [/DIAGRAM] tags:
+
+[DIAGRAM]
+<valid and complete Mermaid code>
+[/DIAGRAM]
+
+Strict rules for diagram blocks:
+- Use ONLY the [DIAGRAM] and [/DIAGRAM] tags. Do not use ```mermaid.
+- The content inside the tags must be pure, valid Mermaid code.
+- Do not include the %%{init: ...}%% block — it is added automatically during processing.
+- Recommended diagram types: flowchart TD, flowchart LR or sequenceDiagram,
+  whichever best represents the user flow.
+- Use English labels and descriptions understandable by end users.
+- Nodes must reflect USER ACTIONS or SCREENS/STATES the user sees,
+  not internal system components."""

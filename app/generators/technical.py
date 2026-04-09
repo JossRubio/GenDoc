@@ -75,3 +75,54 @@ Reglas estrictas para los bloques de diagrama:
         "Diagramas",
         "Notas técnicas y decisiones de diseño",
     ]
+
+    SECTIONS_EN = [
+        "Project summary",
+        "System architecture overview",
+        "Folder and file structure",
+        "Modules and components description",
+        "Data flow / main logic",
+        "Dependencies and requirements",
+        "Installation and configuration instructions",
+        "Environment variables",
+        "API / endpoints (if applicable)",
+        "Diagrams",
+        "Technical notes and design decisions",
+    ]
+
+    PERSONA_EN = """\
+You are writing technical documentation aimed at software developers,
+systems architects and operations teams. The reader has programming experience
+and is familiar with concepts such as APIs, dependencies, environment variables
+and design patterns.
+
+Writing guidelines:
+- Use precise technical terminology; do not simplify concepts the reader already masters.
+- Describe the "how" and "why" behind implementation decisions.
+- Include real file names, modules, classes and functions where relevant.
+- Use code blocks for configuration examples, commands or key snippets.
+- Tables are useful for listing parameters, environment variables or endpoints.
+- The tone is formal-technical: direct, unadorned, but thorough in detail."""
+
+    EXTRA_INSTRUCTIONS_EN = """\
+For the "Diagrams" section, generate between 1 and 3 Mermaid diagrams representing
+the most relevant architecture or flows of the repository (component architecture,
+data flow, call sequence, etc.).
+
+Each diagram must follow this exact structure:
+
+1. A short paragraph explaining what the diagram represents.
+2. The diagram block delimited by the [DIAGRAM] and [/DIAGRAM] tags:
+
+[DIAGRAM]
+<valid and complete Mermaid code>
+[/DIAGRAM]
+
+Strict rules for diagram blocks:
+- Use ONLY the [DIAGRAM] and [/DIAGRAM] tags. Do not use ```mermaid.
+- The content inside the tags must be pure, valid Mermaid code.
+- Do not include the %%{init: ...}%% block — it is added automatically during processing.
+- Recommended diagram types: graph TD, graph LR, sequenceDiagram, classDiagram
+  or flowchart TD, whichever best describes the system.
+- Base diagrams on real code: modules, routes, classes or functions that actually
+  exist in the repository."""

@@ -97,6 +97,9 @@ def api_generate():
     lang                = (body.get("lang")              or "es").strip()
     if lang not in ("es", "en"):
         lang = "es"
+    output_lang         = (body.get("output_lang")       or "es").strip()
+    if output_lang not in ("es", "en"):
+        output_lang = "es"
 
     if not isinstance(locked_sections, list):
         locked_sections = None
@@ -113,7 +116,7 @@ def api_generate():
                                                     primary_color, secondary_color,
                                                     locked_sections, section_enrichments,
                                                     api_key_override, model_override,
-                                                    provider_override, lang):
+                                                    provider_override, lang, output_lang):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

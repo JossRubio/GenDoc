@@ -57,6 +57,8 @@ _MSG = {
         "export_error":      "Error inesperado al exportar el documento",
         "doc_ready":         "Documento listo",
         "no_repo":           "No se especificó ningún repositorio.",
+        "output_lang_es":    "Idioma de salida: Español",
+        "output_lang_en":    "Idioma de salida: Inglés",
     },
     "en": {
         "doc_type":          "Document type",
@@ -94,6 +96,8 @@ _MSG = {
         "export_error":      "Unexpected error exporting the document",
         "doc_ready":         "Document ready",
         "no_repo":           "No repository was specified.",
+        "output_lang_es":    "Output language: Spanish",
+        "output_lang_en":    "Output language: English",
     },
 }
 
@@ -333,6 +337,7 @@ def generate_documentation_stream(
     model_override: str | None = None,
     provider_override: str | None = None,
     lang: str = "es",
+    output_lang: str = "es",
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -349,7 +354,7 @@ def generate_documentation_stream(
         yield from _run(repo_path, template_path, doc_type, primary_color,
                         secondary_color, locked_sections, section_enrichments,
                         api_key_override, model_override, provider_override,
-                        lang)
+                        lang, output_lang)
     except Exception as exc:
         yield _error(f"{'Unexpected internal error' if lang == 'en' else 'Error interno inesperado'}: {exc}.")
 
@@ -361,7 +366,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
          api_key_override: str | None = None,
          model_override: str | None = None,
          provider_override: str | None = None,
-         lang: str = "es"):
+         lang: str = "es",
+         output_lang: str = "es"):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -434,6 +440,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _log(f"LLM: {active_provider} / {active_model}")
     yield _progress(40)
 
+    _olang_key = "output_lang_en" if output_lang == "en" else "output_lang_es"
+    yield _log(_m(lang, _olang_key))
     yield _log(_m(lang, "building_prompt"))
     yield _log(_m(lang, "generating"))
 
@@ -444,6 +452,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             api_key_override=api_key_override,
             model_override=model_override,
             provider_override=provider_override,
+            output_lang=output_lang,
         )
     except ValueError as exc:
         yield _error(f"{_m(lang, 'config_error')}: {exc}")

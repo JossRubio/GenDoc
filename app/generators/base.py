@@ -27,8 +27,9 @@ from pathlib import Path
 from .. import ai_service
 from ..repo_reader import RepoScan
 
-# Shared Markdown formatting block, included in every prompt.
-_FORMAT_INSTRUCTIONS = """\
+# Shared Markdown formatting block — one version per supported output language.
+_FORMAT_INSTRUCTIONS: dict[str, str] = {
+    "es": """\
 ## Instrucciones de formato
 
 Usa **exactamente** estas convenciones Markdown:
@@ -48,7 +49,47 @@ La descripción debe ser concisa (máximo 10 palabras) y explicar qué represent
 elemento. Ejemplos válidos:
   [CAPTION: Dependencias principales del proyecto]
   [CAPTION: Comando de instalación en entorno virtual]
-  [CAPTION: Arquitectura de componentes del sistema]"""
+  [CAPTION: Arquitectura de componentes del sistema]""",
+
+    "en": """\
+## Formatting instructions
+
+Use **exactly** these Markdown conventions:
+- `#` for the main document title
+- `##` for each main section
+- `###` for subsections when needed
+- Lists with `-` or `*` where appropriate
+- Native Markdown tables with `|` where appropriate
+- Code blocks with triple backtick and the language specified
+
+Before **each table**, **code block** and **diagram**, include on the immediately
+preceding line (no blank lines between the tag and the element) the label:
+
+  [CAPTION: brief description of the content]
+
+The description must be concise (max 10 words) and explain what the element represents.
+Valid examples:
+  [CAPTION: Main project dependencies]
+  [CAPTION: Installation command in virtual environment]
+  [CAPTION: System component architecture]""",
+}
+
+
+# Language directive inserted at the very top of every prompt.
+_LANG_DIRECTIVE: dict[str, str] = {
+    "es": (
+        "🌐 **IDIOMA DE SALIDA OBLIGATORIO: ESPAÑOL**\n"
+        "Redacta TODO el contenido del documento en español. "
+        "Todos los títulos, secciones, párrafos, listas, tablas y explicaciones "
+        "deben estar escritos en español. No uses otro idioma en ninguna parte del documento.\n\n"
+    ),
+    "en": (
+        "🌐 **MANDATORY OUTPUT LANGUAGE: ENGLISH**\n"
+        "Write ALL document content in English. "
+        "Every title, section heading, paragraph, list item, table cell and explanation "
+        "must be written in English. Do not use any other language anywhere in the document.\n\n"
+    ),
+}
 
 
 class BaseGenerator:
@@ -73,6 +114,7 @@ class BaseGenerator:
         template_content: str | None = None,
         locked_sections: list[str] | None = None,
         section_enrichments: dict | None = None,
+        output_lang: str = "es",
     ) -> str:
         """
         Assemble the full prompt for this document type.
@@ -94,89 +136,159 @@ class BaseGenerator:
         Override this method in a subclass only when the default
         structure is not appropriate for that document type.
         """
+        lang = output_lang if output_lang in ("es", "en") else "es"
+
+        # ── Resolve section names in the target language ───────────────
+        sections = getattr(self, f"SECTIONS_{lang.upper()}", None) or self.SECTIONS
+        persona  = getattr(self, f"PERSONA_{lang.upper()}", None)  or self.PERSONA
+        extra    = getattr(self, f"EXTRA_INSTRUCTIONS_{lang.upper()}", None) or self.EXTRA_INSTRUCTIONS
+
+        fmt_instructions = _FORMAT_INSTRUCTIONS[lang]
+        lang_directive   = _LANG_DIRECTIVE[lang]
+
         if template_content:
-            structure_instruction = (
-                "El usuario ha proporcionado el siguiente documento como plantilla "
-                "de referencia. Respeta su estructura, estilo y nivel de detalle "
-                "al redactar el documento:\n\n"
-                "---INICIO PLANTILLA---\n"
-                f"{template_content[:6000]}\n"
-                "---FIN PLANTILLA---\n"
-            )
+            if lang == "en":
+                structure_instruction = (
+                    "The user has provided the following document as a reference template. "
+                    "Respect its structure, style and level of detail when writing the document:\n\n"
+                    "---TEMPLATE START---\n"
+                    f"{template_content[:6000]}\n"
+                    "---TEMPLATE END---\n"
+                )
+            else:
+                structure_instruction = (
+                    "El usuario ha proporcionado el siguiente documento como plantilla "
+                    "de referencia. Respeta su estructura, estilo y nivel de detalle "
+                    "al redactar el documento:\n\n"
+                    "---INICIO PLANTILLA---\n"
+                    f"{template_content[:6000]}\n"
+                    "---FIN PLANTILLA---\n"
+                )
         else:
-            sections_block = "\n".join(
-                f"  {i + 1}. {s}" for i, s in enumerate(self.SECTIONS)
-            )
-            structure_instruction = (
-                "El documento debe incluir las siguientes secciones, "
-                f"en el orden dado:\n{sections_block}"
-            )
+            sections_block = "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(sections))
+            if lang == "en":
+                structure_instruction = (
+                    f"The document must include the following sections in the given order:\n{sections_block}"
+                )
+            else:
+                structure_instruction = (
+                    f"El documento debe incluir las siguientes secciones, en el orden dado:\n{sections_block}"
+                )
 
         persona_block = (
-            f"## Tu rol y audiencia\n\n{self.PERSONA}\n\n"
-            if self.PERSONA else ""
+            (f"## Your role and audience\n\n{persona}\n\n" if lang == "en"
+             else f"## Tu rol y audiencia\n\n{persona}\n\n")
+            if persona else ""
         )
 
         repo_context = ai_service.build_repo_context(repo_scan)
 
         extra_block = (
-            f"## Instrucciones específicas\n\n{self.EXTRA_INSTRUCTIONS}\n\n"
-            if self.EXTRA_INSTRUCTIONS else ""
+            (f"## Specific instructions\n\n{extra}\n\n" if lang == "en"
+             else f"## Instrucciones específicas\n\n{extra}\n\n")
+            if extra else ""
         )
 
         # Build the locked-sections block only when applicable
         locked_block = ""
         if template_content and locked_sections:
             locked_list = "\n".join(f"  - {s}" for s in locked_sections)
-            locked_block = (
-                "## Secciones que NO debes modificar\n\n"
-                "Las siguientes secciones deben copiarse **exactamente** como "
-                "aparecen en la plantilla, sin ninguna modificación, adición ni "
-                "eliminación de contenido:\n\n"
-                f"{locked_list}\n\n"
-                "El resto de secciones sí deben generarse o adaptarse según el "
-                "código del repositorio.\n\n"
-            )
+            if lang == "en":
+                locked_block = (
+                    "## Sections you must NOT modify\n\n"
+                    "The following sections must be copied **exactly** as they appear "
+                    "in the template, without any modification, addition or removal:\n\n"
+                    f"{locked_list}\n\n"
+                    "All other sections must be generated or adapted from the repository code.\n\n"
+                )
+            else:
+                locked_block = (
+                    "## Secciones que NO debes modificar\n\n"
+                    "Las siguientes secciones deben copiarse **exactamente** como "
+                    "aparecen en la plantilla, sin ninguna modificación, adición ni "
+                    "eliminación de contenido:\n\n"
+                    f"{locked_list}\n\n"
+                    "El resto de secciones sí deben generarse o adaptarse según el "
+                    "código del repositorio.\n\n"
+                )
 
         # Build per-section enrichment instructions
         enrichment_block = ""
         if section_enrichments:
             lines: list[str] = []
-            _labels = {"table": "una tabla Markdown", "diagram": "un diagrama Mermaid"}
-            for section, types in section_enrichments.items():
-                what = " y ".join(_labels[t] for t in types if t in _labels)
-                if what:
-                    lines.append(
-                        f'  - En la sección "**{section}**" incluye {what}.'
+            if lang == "en":
+                _labels = {"table": "a Markdown table", "diagram": "a Mermaid diagram"}
+                for section, types in section_enrichments.items():
+                    what = " and ".join(_labels[t] for t in types if t in _labels)
+                    if what:
+                        lines.append(f'  - In section "**{section}**" include {what}.')
+                if lines:
+                    enrichment_block = (
+                        "## Elements to include per section\n\n"
+                        "For the sections listed below, make sure to incorporate the specified "
+                        "elements (table and/or diagram). Use standard Markdown for tables and "
+                        "[DIAGRAM]…[/DIAGRAM] tags for Mermaid diagrams:\n\n"
+                        + "\n".join(lines) + "\n\n"
                     )
-            if lines:
-                enrichment_block = (
-                    "## Elementos a incluir por sección\n\n"
-                    "Para las secciones indicadas a continuación, asegúrate de "
-                    "incorporar los elementos especificados (tabla y/o diagrama). "
-                    "Usa el formato Markdown estándar para tablas y las etiquetas "
-                    "[DIAGRAM]…[/DIAGRAM] para diagramas Mermaid:\n\n"
-                    + "\n".join(lines)
-                    + "\n\n"
-                )
+            else:
+                _labels = {"table": "una tabla Markdown", "diagram": "un diagrama Mermaid"}
+                for section, types in section_enrichments.items():
+                    what = " y ".join(_labels[t] for t in types if t in _labels)
+                    if what:
+                        lines.append(f'  - En la sección "**{section}**" incluye {what}.')
+                if lines:
+                    enrichment_block = (
+                        "## Elementos a incluir por sección\n\n"
+                        "Para las secciones indicadas a continuación, asegúrate de "
+                        "incorporar los elementos especificados (tabla y/o diagrama). "
+                        "Usa el formato Markdown estándar para tablas y las etiquetas "
+                        "[DIAGRAM]…[/DIAGRAM] para diagramas Mermaid:\n\n"
+                        + "\n".join(lines) + "\n\n"
+                    )
+
+        if lang == "en":
+            general_rules = (
+                "## General instructions\n\n"
+                "- Write entirely in English.\n"
+                "- Base every statement on the actual repository code; "
+                "do not invent features that do not exist.\n"
+                "- Do not include introductory text, disclaimers or comments "
+                "outside the document itself.\n"
+                "- Respond **only** with the complete Markdown document.\n\n"
+            )
+            intro = (
+                "You are a software documentation expert. "
+                "Your task is to generate professional Markdown documentation "
+                "for the code repository provided below.\n\n"
+            )
+        else:
+            general_rules = (
+                "## Instrucciones generales\n\n"
+                "- Redacta íntegramente en español.\n"
+                "- Basa cada afirmación en el código real del repositorio; "
+                "no inventes funcionalidades que no existan.\n"
+                "- No incluyas texto introductorio, aclaraciones ni comentarios "
+                "fuera del documento en sí.\n"
+                "- Responde **únicamente** con el documento Markdown completo.\n\n"
+            )
+            intro = (
+                "Eres un experto en documentación de software. "
+                "Tu tarea es generar documentación profesional en Markdown "
+                "para el repositorio de código que se proporciona más abajo.\n\n"
+            )
+
+        doc_structure_label = "## Document structure\n\n" if lang == "en" else "## Estructura del documento\n\n"
 
         return (
-            "Eres un experto en documentación de software. "
-            "Tu tarea es generar documentación profesional en Markdown "
-            "para el repositorio de código que se proporciona más abajo.\n\n"
+            f"{lang_directive}"
+            f"{intro}"
             f"{persona_block}"
-            f"{_FORMAT_INSTRUCTIONS}\n\n"
-            "## Estructura del documento\n\n"
+            f"{fmt_instructions}\n\n"
+            f"{doc_structure_label}"
             f"{structure_instruction}\n\n"
             f"{locked_block}"
             f"{enrichment_block}"
-            "## Instrucciones generales\n\n"
-            "- Redacta íntegramente en español.\n"
-            "- Basa cada afirmación en el código real del repositorio; "
-            "no inventes funcionalidades que no existan.\n"
-            "- No incluyas texto introductorio, aclaraciones ni comentarios "
-            "fuera del documento en sí.\n"
-            "- Responde **únicamente** con el documento Markdown completo.\n\n"
+            f"{general_rules}"
             f"{extra_block}"
             f"---\n\n{repo_context}"
         )
@@ -193,6 +305,7 @@ class BaseGenerator:
         api_key_override: str | None = None,
         model_override: str | None = None,
         provider_override: str | None = None,
+        output_lang: str = "es",
     ) -> str:
         """
         Build the prompt for this document type, send it to Gemini, and
@@ -214,7 +327,7 @@ class BaseGenerator:
         """
         try:
             prompt = self.build_prompt(repo_scan, template_content, locked_sections,
-                                       section_enrichments)
+                                       section_enrichments, output_lang)
         except Exception as exc:
             raise RuntimeError(
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"

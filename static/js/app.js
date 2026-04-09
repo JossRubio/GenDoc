@@ -34,6 +34,7 @@ const ui = {
   sectionsList:           document.getElementById("sectionsList"),
   btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
   btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
+  outputLangSelect:       document.getElementById("outputLangSelect"),
   // LLM config
   providerSelect:         document.getElementById("providerSelect"),
   apiKeyInput:            document.getElementById("apiKeyInput"),
@@ -77,6 +78,10 @@ const TRANSLATIONS = {
     docTypeTechnical:  "Documentación técnica",
     docTypeUserManual: "Manual de Usuario",
     docTypeExecutive:  "Presentación Ejecutiva",
+    outputLangLabel:   "Idioma del documento",
+    outputLangEs:      "Español",
+    outputLangEn:      "Inglés",
+    outputLangHint:    "Define el idioma en que se redactará el contenido del documento generado.",
     colorPalette:      "Paleta de colores",
     primaryColor:      "Color principal",
     primaryColorDesc:  "Título, subtítulos H1/H2 y encabezados de tablas",
@@ -151,6 +156,10 @@ const TRANSLATIONS = {
     docTypeTechnical:  "Technical Documentation",
     docTypeUserManual: "User Manual",
     docTypeExecutive:  "Executive Presentation",
+    outputLangLabel:   "Document language",
+    outputLangEs:      "Spanish",
+    outputLangEn:      "English",
+    outputLangHint:    "Sets the language in which the generated document content will be written.",
     colorPalette:      "Color Palette",
     primaryColor:      "Primary color",
     primaryColorDesc:  "Title, H1/H2 subtitles and table headers",
@@ -246,6 +255,15 @@ function applyLang(lang) {
     if (tr[key] !== undefined) el.setAttribute("aria-label", tr[key]);
   });
 
+  // Sync output language dropdown options text
+  const olSelect = document.getElementById("outputLangSelect");
+  if (olSelect) {
+    olSelect.options[0].textContent = tr["outputLangEs"];
+    olSelect.options[1].textContent = tr["outputLangEn"];
+    // Default selection follows interface lang (only if user hasn't changed it)
+    if (!olSelect.dataset.userSet) olSelect.value = lang;
+  }
+
   // Update dynamic elements that are already rendered
   document.getElementById("statusText").textContent =
     { idle: t("statusIdle"), running: t("statusRunning"), done: t("statusDone"), error: t("statusError") }
@@ -257,6 +275,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".gd-lang-btn").forEach(btn => {
     btn.addEventListener("click", () => applyLang(btn.dataset.lang));
   });
+
+  // Mark output lang dropdown as user-set when changed manually
+  const olSel = document.getElementById("outputLangSelect");
+  if (olSel) olSel.addEventListener("change", () => { olSel.dataset.userSet = "1"; });
+
   applyLang(_lang);
 });
 
@@ -770,6 +793,7 @@ async function generate() {
         model_override:       modelOverride,
         provider_override:    providerOverride,
         lang:                 _lang,
+        output_lang:          ui.outputLangSelect.value || _lang,
       }),
     });
 

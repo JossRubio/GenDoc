@@ -790,6 +790,28 @@ body {
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
+/* ── Output language selector ────────────────────────────────────── */
+
+.gd-output-lang-select {
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--gd-text);
+  background: var(--gd-input-bg);
+  outline: none;
+  cursor: pointer;
+  width: 100%;
+  transition: border-color 0.15s, background 0.25s, color 0.25s;
+  font-family: inherit;
+}
+
+.gd-output-lang-select:focus {
+  border-color: var(--gd-primary);
+  background: var(--gd-input-focus-bg);
+}
+
 /* ── LLM config ──────────────────────────────────────────────────── */
 
 .gd-provider-select {
