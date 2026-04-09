@@ -459,13 +459,52 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ── Language toggle ─────────────────────────────────────────────── */
+
+.gd-lang-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--gd-input-bg);
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: var(--gd-transition);
+}
+
+.gd-lang-btn {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 0.22rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--gd-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.gd-lang-btn:hover:not(.active) {
+  background: var(--gd-btn-browse-hover);
+  color: var(--gd-text);
+}
+
+.gd-lang-btn.active {
+  background: var(--gd-primary);
+  color: #fff;
+}
+
 /* ── Theme toggle switch ───────────────────────────────────────────── */
 
 .gd-theme-toggle {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  margin-left: auto;
   flex-shrink: 0;
 }
 

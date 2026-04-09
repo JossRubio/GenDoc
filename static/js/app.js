@@ -45,6 +45,221 @@ const ui = {
   modelLoadStatus:        document.getElementById("modelLoadStatus"),
 };
 
+// ── i18n ─────────────────────────────────────────────────────────────
+
+const TRANSLATIONS = {
+  es: {
+    subtitle:          "Generador automático de documentación para repositorios",
+    themeToggleTitle:  "Cambiar tema",
+    themeToggleLabel:  "Activar modo oscuro",
+    llmConfig:         "Configuración de LLM",
+    optional:          "Opcional",
+    apiKeyPlaceholder: "API key del proveedor seleccionado…",
+    showHide:          "Mostrar / ocultar",
+    loadModels:        "Cargar modelos",
+    selectModel:       "— Selecciona un modelo —",
+    apiKeyHint:        "Si no configuras una API key, se usará la definida en el servidor.",
+    repository:        "Repositorio",
+    repoPlaceholder:   "Ruta a la carpeta del repositorio…",
+    browse:            "Examinar",
+    template:          "Plantilla de documentación",
+    templatePlaceholder: "Archivo de referencia (.txt, .md, .docx…)",
+    templateHint:      "Proporciona un documento de ejemplo para guiar el estilo de la documentación generada.",
+    sectionsDetected:  "Secciones detectadas en la plantilla",
+    selectAll:         "Seleccionar todo",
+    deselectAll:       "Deseleccionar todo",
+    sectionsHint:      "Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM (las no marcadas se copian exactamente desde la plantilla). Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos elementos en cada sección.",
+    colSection:        "Sección detectada",
+    colText:           "Texto",
+    colTables:         "Tablas",
+    colDiagrams:       "Diagramas",
+    docType:           "Tipo de documento",
+    docTypeTechnical:  "Documentación técnica",
+    docTypeUserManual: "Manual de Usuario",
+    docTypeExecutive:  "Presentación Ejecutiva",
+    colorPalette:      "Paleta de colores",
+    primaryColor:      "Color principal",
+    primaryColorDesc:  "Título, subtítulos H1/H2 y encabezados de tablas",
+    secondaryColor:    "Color secundario",
+    secondaryColorDesc:"H3+, código, encabezados y pie de página",
+    generateBtn:       "Generar Documentación",
+    generateHint:      "Selecciona un repositorio para habilitar este botón",
+    statusIdle:        "Listo",
+    statusRunning:     "Procesando...",
+    statusDone:        "Completado",
+    statusError:       "Error",
+    logAreaLabel:      "Registro de actividad",
+    progress:          "Progreso",
+    downloadBtn:       "Descargar documentación",
+    runningOn:         "Ejecutando en",
+    // idle modal
+    idleTitle:         "El servidor se cerrará automáticamente",
+    idleBody:          "No se detectó actividad. GenDoc se apagará en",
+    idleSeconds:       "segundos.",
+    idleKeepAlive:     "Mantener activo",
+    idleShutdown:      "El servidor se ha cerrado.",
+    // dynamic log / status
+    logReady:          "GenDoc listo. Selecciona un repositorio para comenzar.",
+    logStarting:       "Iniciando generación de documentación...",
+    logRepoSelected:   "Repositorio seleccionado:",
+    logTemplateSelected: "Plantilla seleccionada:",
+    logNoRepo:         "Selecciona un repositorio primero.",
+    logNoFolder:       "No se pudo abrir el selector de carpeta.",
+    logNoFile:         "No se pudo abrir el selector de archivo.",
+    logSections:       "Secciones detectadas en la plantilla:",
+    logNoSections:     "No se detectaron secciones en la plantilla.",
+    logSectionsError:  "No se pudieron leer las secciones de la plantilla.",
+    logModelsLoaded:   "Modelos cargados:",
+    logApiKeyFirst:    "Ingresa una API key primero.",
+    logConnectError:   "No se pudo conectar con el servidor.",
+    logCommError:      "Error de comunicación:",
+    logDownloading:    "Descargando",
+    logDownloadError:  "Error al iniciar la descarga:",
+    serverDefaultModel:"— Usar modelo del servidor —",
+    loadingModels:     "Cargando…",
+    noModels:          "— Sin modelos —",
+    errorLoading:      "— Error al cargar —",
+    modelsAvailable:   "modelo(s) disponible(s)",
+    modelError:        "Error:",
+  },
+  en: {
+    subtitle:          "Automatic documentation generator for repositories",
+    themeToggleTitle:  "Change theme",
+    themeToggleLabel:  "Enable dark mode",
+    llmConfig:         "LLM Configuration",
+    optional:          "Optional",
+    apiKeyPlaceholder: "API key for the selected provider…",
+    showHide:          "Show / hide",
+    loadModels:        "Load models",
+    selectModel:       "— Select a model —",
+    apiKeyHint:        "If you don't configure an API key, the server-defined one will be used.",
+    repository:        "Repository",
+    repoPlaceholder:   "Path to the repository folder…",
+    browse:            "Browse",
+    template:          "Documentation Template",
+    templatePlaceholder: "Reference file (.txt, .md, .docx…)",
+    templateHint:      "Provide a sample document to guide the style of the generated documentation.",
+    sectionsDetected:  "Sections detected in the template",
+    selectAll:         "Select all",
+    deselectAll:       "Deselect all",
+    sectionsHint:      "Use the <strong>Text</strong> column to indicate which sections the LLM should edit (unmarked ones are copied exactly from the template). Use <strong>Tables</strong> and <strong>Diagrams</strong> to request those elements per section.",
+    colSection:        "Detected section",
+    colText:           "Text",
+    colTables:         "Tables",
+    colDiagrams:       "Diagrams",
+    docType:           "Document Type",
+    docTypeTechnical:  "Technical Documentation",
+    docTypeUserManual: "User Manual",
+    docTypeExecutive:  "Executive Presentation",
+    colorPalette:      "Color Palette",
+    primaryColor:      "Primary color",
+    primaryColorDesc:  "Title, H1/H2 subtitles and table headers",
+    secondaryColor:    "Secondary color",
+    secondaryColorDesc:"H3+, code, headers and footer",
+    generateBtn:       "Generate Documentation",
+    generateHint:      "Select a repository to enable this button",
+    statusIdle:        "Ready",
+    statusRunning:     "Processing...",
+    statusDone:        "Completed",
+    statusError:       "Error",
+    logAreaLabel:      "Activity log",
+    progress:          "Progress",
+    downloadBtn:       "Download documentation",
+    runningOn:         "Running on",
+    // idle modal
+    idleTitle:         "The server will shut down automatically",
+    idleBody:          "No activity detected. GenDoc will close in",
+    idleSeconds:       "seconds.",
+    idleKeepAlive:     "Keep alive",
+    idleShutdown:      "The server has been closed.",
+    // dynamic
+    logReady:          "GenDoc ready. Select a repository to begin.",
+    logStarting:       "Starting documentation generation...",
+    logRepoSelected:   "Repository selected:",
+    logTemplateSelected: "Template selected:",
+    logNoRepo:         "Please select a repository first.",
+    logNoFolder:       "Could not open the folder selector.",
+    logNoFile:         "Could not open the file selector.",
+    logSections:       "Sections detected in the template:",
+    logNoSections:     "No sections detected in the template.",
+    logSectionsError:  "Could not read template sections.",
+    logModelsLoaded:   "Models loaded:",
+    logApiKeyFirst:    "Please enter an API key first.",
+    logConnectError:   "Could not connect to the server.",
+    logCommError:      "Communication error:",
+    logDownloading:    "Downloading",
+    logDownloadError:  "Download error:",
+    serverDefaultModel:"— Use server model —",
+    loadingModels:     "Loading…",
+    noModels:          "— No models —",
+    errorLoading:      "— Error loading —",
+    modelsAvailable:   "model(s) available",
+    modelError:        "Error:",
+  },
+};
+
+let _lang = localStorage.getItem("gd-lang") || "es";
+
+function t(key) {
+  return (TRANSLATIONS[_lang] || TRANSLATIONS.es)[key] ?? key;
+}
+
+function applyLang(lang) {
+  _lang = lang;
+  localStorage.setItem("gd-lang", lang);
+  document.documentElement.lang = lang;
+
+  // Update lang toggle buttons
+  document.querySelectorAll(".gd-lang-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.lang === lang);
+  });
+
+  const tr = TRANSLATIONS[lang] || TRANSLATIONS.es;
+
+  // textContent
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.dataset.i18n;
+    if (tr[key] !== undefined) el.textContent = tr[key];
+  });
+
+  // innerHTML (for hints with <strong> tags)
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    const key = el.dataset.i18nHtml;
+    if (tr[key] !== undefined) el.innerHTML = tr[key];
+  });
+
+  // placeholder
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    const key = el.dataset.i18nPlaceholder;
+    if (tr[key] !== undefined) el.placeholder = tr[key];
+  });
+
+  // title
+  document.querySelectorAll("[data-i18n-title]").forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (tr[key] !== undefined) el.title = tr[key];
+  });
+
+  // aria-label
+  document.querySelectorAll("[data-i18n-aria-label]").forEach(el => {
+    const key = el.dataset.i18nAriaLabel;
+    if (tr[key] !== undefined) el.setAttribute("aria-label", tr[key]);
+  });
+
+  // Update dynamic elements that are already rendered
+  document.getElementById("statusText").textContent =
+    { idle: t("statusIdle"), running: t("statusRunning"), done: t("statusDone"), error: t("statusError") }
+    [_currentStatus] ?? t("statusIdle");
+}
+
+// Wire up language buttons
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".gd-lang-btn").forEach(btn => {
+    btn.addEventListener("click", () => applyLang(btn.dataset.lang));
+  });
+  applyLang(_lang);
+});
+
 // ── State ────────────────────────────────────────────────────────────
 
 let isRunning        = false;
@@ -100,10 +315,18 @@ function stopProgressTicker() {
   _progressTicker = null;
 }
 
+let _currentStatus = "idle";
+
 function setStatus(state) {
-  const labels = { idle: "Listo", running: "Procesando...", done: "Completado", error: "Error" };
-  ui.statusDot.className = `gd-status-dot ${state === "idle" ? "" : state}`;
-  ui.statusText.textContent = labels[state] ?? "Listo";
+  _currentStatus = state;
+  const labels = {
+    idle:    t("statusIdle"),
+    running: t("statusRunning"),
+    done:    t("statusDone"),
+    error:   t("statusError"),
+  };
+  ui.statusDot.className    = `gd-status-dot ${state === "idle" ? "" : state}`;
+  ui.statusText.textContent = labels[state] ?? t("statusIdle");
 }
 
 // ── Download button ──────────────────────────────────────────────────
@@ -175,15 +398,15 @@ function setModelStatus(msg, type = "info") {
 async function loadModels() {
   const apiKey = ui.apiKeyInput.value.trim();
   if (!apiKey) {
-    setModelStatus("Ingresa una API key primero.", "warn");
+    setModelStatus(t("logApiKeyFirst"), "warn");
     ui.modelSelectorWrap.style.display = "block";
     return;
   }
 
   ui.btnLoadModels.disabled = true;
   ui.modelSelectorWrap.style.display = "block";
-  setModelStatus("Cargando modelos…", "loading");
-  ui.modelSelect.innerHTML = '<option value="">Cargando…</option>';
+  setModelStatus(t("loadingModels"), "loading");
+  ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
 
   try {
     const resp = await fetch("/api/models", {
@@ -194,13 +417,13 @@ async function loadModels() {
     const data = await resp.json();
 
     if (data.error) {
-      setModelStatus(`Error: ${data.error}`, "error");
-      ui.modelSelect.innerHTML = '<option value="">— Sin modelos —</option>';
+      setModelStatus(`${t("modelError")} ${data.error}`, "error");
+      ui.modelSelect.innerHTML = `<option value="">${t("noModels")}</option>`;
       return;
     }
 
     const models = data.models || [];
-    ui.modelSelect.innerHTML = '<option value="">— Usar modelo del servidor —</option>';
+    ui.modelSelect.innerHTML = `<option value="">${t("serverDefaultModel")}</option>`;
     models.forEach(m => {
       const opt = document.createElement("option");
       opt.value       = m.id;
@@ -208,11 +431,11 @@ async function loadModels() {
       ui.modelSelect.appendChild(opt);
     });
 
-    setModelStatus(`${models.length} modelo(s) disponible(s)`, "success");
-    log(`Modelos cargados: ${models.length}`, "success");
+    setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
+    log(`${t("logModelsLoaded")} ${models.length}`, "success");
   } catch (err) {
-    setModelStatus("No se pudo conectar con el servidor.", "error");
-    ui.modelSelect.innerHTML = '<option value="">— Error al cargar —</option>';
+    setModelStatus(t("logConnectError"), "error");
+    ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;
   } finally {
     ui.btnLoadModels.disabled = false;
   }
@@ -242,10 +465,10 @@ async function browseFolder() {
       ui.repoInput.value = data.path;
       updateDownloadButton(data.path);
       setButtonState(true);
-      log(`Repositorio seleccionado: ${data.path}`);
+      log(`${t("logRepoSelected")} ${data.path}`);
     }
   } catch {
-    log("No se pudo abrir el selector de carpeta.", "error");
+    log(t("logNoFolder"), "error");
   } finally {
     setBrowseLoading(ui.btnBrowseRepo, false);
   }
@@ -258,12 +481,12 @@ async function browseFile() {
     const data = await resp.json();
     if (data.path) {
       ui.templateInput.value = data.path;
-      log(`Plantilla seleccionada: ${data.path}`);
+      log(`${t("logTemplateSelected")} ${data.path}`);
       setDocTypeEnabled(false);
       await loadTemplateSections(data.path);
     }
   } catch {
-    log("No se pudo abrir el selector de archivo.", "error");
+    log(t("logNoFile"), "error");
   } finally {
     setBrowseLoading(ui.btnBrowseTpl, false);
   }
@@ -411,12 +634,12 @@ async function loadTemplateSections(templatePath) {
 
     if (data.sections && data.sections.length > 0) {
       renderSectionsPanel(data.sections);
-      log(`Secciones detectadas en la plantilla: ${data.sections.length}`);
+      log(`${t("logSections")} ${data.sections.length}`);
     } else {
-      log("No se detectaron secciones en la plantilla.", "warn");
+      log(t("logNoSections"), "warn");
     }
   } catch {
-    log("No se pudieron leer las secciones de la plantilla.", "warn");
+    log(t("logSectionsError"), "warn");
   }
 }
 
@@ -510,7 +733,7 @@ async function generate() {
   const templatePath = ui.templateInput.value.trim();
 
   if (!repoPath) {
-    log("Selecciona un repositorio primero.", "warn");
+    log(t("logNoRepo"), "warn");
     return;
   }
 
@@ -525,7 +748,7 @@ async function generate() {
   setStatus("running");
   setProgress(0);
   startProgressTicker();
-  log("Iniciando generación de documentación...");
+  log(t("logStarting"));
 
   try {
     const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
@@ -554,7 +777,7 @@ async function generate() {
 
   } catch (err) {
     stopProgressTicker();
-    log(`Error de comunicación: ${err.message}`, "error");
+    log(`${t("logCommError")} ${err.message}`, "error");
     setStatus("error");
     setProgress(0);
   } finally {
@@ -593,9 +816,9 @@ async function download() {
     a.remove();
     URL.revokeObjectURL(url);
 
-    log(`Descargando ${filename}`, "success");
+    log(`${t("logDownloading")} ${filename}`, "success");
   } catch (err) {
-    log(`Error al iniciar la descarga: ${err.message}`, "error");
+    log(`${t("logDownloadError")} ${err.message}`, "error");
   }
 }
 
@@ -691,7 +914,7 @@ ui.templateInput.addEventListener("input", () => {
         countdownEl.textContent = "0";
         // Server will shut down on its own — show final message
         countdownEl.closest(".gd-idle-box").querySelector(".gd-idle-title")
-          .textContent = "El servidor se ha cerrado.";
+          .textContent = t("idleShutdown");
         keepAlive.style.display = "none";
       }
     }, 1000);
@@ -725,4 +948,4 @@ ui.templateInput.addEventListener("input", () => {
 
 setStatus("idle");
 setProgress(0);
-log("GenDoc listo. Selecciona un repositorio para comenzar.");
+log(t("logReady"));

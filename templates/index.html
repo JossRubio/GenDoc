@@ -30,7 +30,7 @@
 </head>
 <body class="d-flex align-items-start justify-content-center py-5 px-3">
 
-  <div class="w-100" style="max-width: 680px;">
+  <div class="w-100" style="max-width: 820px;">
 
     <!-- ── Card ─────────────────────────────────────────────────── -->
     <div class="gd-card">
@@ -40,13 +40,19 @@
         <div class="gd-logo">GD</div>
         <div>
           <h1 class="gd-title">GenDoc</h1>
-          <p class="gd-subtitle">Generador automático de documentación para repositorios</p>
+          <p class="gd-subtitle" data-i18n="subtitle">Generador automático de documentación para repositorios</p>
+        </div>
+
+        <!-- Language selector -->
+        <div class="gd-lang-toggle" id="langToggle" title="Language / Idioma">
+          <button class="gd-lang-btn active" data-lang="es">ES</button>
+          <button class="gd-lang-btn" data-lang="en">EN</button>
         </div>
 
         <!-- Theme toggle -->
-        <div class="gd-theme-toggle" title="Cambiar tema">
+        <div class="gd-theme-toggle" data-i18n-title="themeToggleTitle">
           <span class="gd-theme-icon icon-sun" aria-hidden="true">☀️</span>
-          <label class="gd-switch" aria-label="Activar modo oscuro">
+          <label class="gd-switch" data-i18n-aria-label="themeToggleLabel">
             <input type="checkbox" id="themeToggle" />
             <div class="gd-switch-track"></div>
             <div class="gd-switch-thumb"></div>
@@ -58,8 +64,8 @@
       <!-- ── Configuración de LLM ───────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">
-          Configuración de LLM
-          <span class="badge-optional">Opcional</span>
+          <span data-i18n="llmConfig">Configuración de LLM</span>
+          <span class="badge-optional" data-i18n="optional">Opcional</span>
         </div>
 
         <!-- Provider selector + API Key row -->
@@ -74,16 +80,17 @@
               id="apiKeyInput"
               type="password"
               class="gd-path-input"
+              data-i18n-placeholder="apiKeyPlaceholder"
               placeholder="API key del proveedor seleccionado…"
               autocomplete="off"
               spellcheck="false"
             />
-            <button id="btnToggleApiKey" class="gd-apikey-eye" type="button" title="Mostrar / ocultar">
+            <button id="btnToggleApiKey" class="gd-apikey-eye" type="button" data-i18n-title="showHide">
               <span id="apiKeyEyeIcon">👁</span>
             </button>
           </div>
           <button id="btnLoadModels" class="btn-browse" type="button">
-            🔍 Cargar modelos
+            🔍 <span data-i18n="loadModels">Cargar modelos</span>
           </button>
         </div>
 
@@ -91,31 +98,32 @@
         <div id="modelSelectorWrap" style="display:none;">
           <div class="gd-model-row">
             <select id="modelSelect" class="gd-model-select">
-              <option value="">— Selecciona un modelo —</option>
+              <option value="" data-i18n="selectModel">— Selecciona un modelo —</option>
             </select>
             <span id="modelLoadStatus" class="gd-model-status"></span>
           </div>
         </div>
 
-        <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;">
+        <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;" data-i18n="apiKeyHint">
           Si no configuras una API key, se usará la definida en el servidor.
         </div>
       </div>
 
       <!-- ── Repositorio ──────────────────────────────────────── -->
       <div class="mb-4">
-        <div class="gd-label">Repositorio <span style="color:#ef4444">*</span></div>
+        <div class="gd-label"><span data-i18n="repository">Repositorio</span> <span style="color:#ef4444">*</span></div>
         <div class="gd-path-group">
           <input
             id="repoPath"
             type="text"
             class="gd-path-input"
+            data-i18n-placeholder="repoPlaceholder"
             placeholder="Ruta a la carpeta del repositorio…"
             autocomplete="off"
             spellcheck="false"
           />
           <button id="btnBrowseRepo" class="btn-browse">
-            📂 Examinar
+            📂 <span data-i18n="browse">Examinar</span>
           </button>
         </div>
       </div>
@@ -123,23 +131,24 @@
       <!-- ── Plantilla ────────────────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">
-          Plantilla de documentación
-          <span class="badge-optional">Opcional</span>
+          <span data-i18n="template">Plantilla de documentación</span>
+          <span class="badge-optional" data-i18n="optional">Opcional</span>
         </div>
         <div class="gd-path-group">
           <input
             id="templatePath"
             type="text"
             class="gd-path-input"
+            data-i18n-placeholder="templatePlaceholder"
             placeholder="Archivo de referencia (.txt, .md, .docx…)"
             autocomplete="off"
             spellcheck="false"
           />
           <button id="btnBrowseTemplate" class="btn-browse">
-            📄 Examinar
+            📄 <span data-i18n="browse">Examinar</span>
           </button>
         </div>
-        <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;">
+        <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;" data-i18n="templateHint">
           Proporciona un documento de ejemplo para guiar el estilo de la documentación generada.
         </div>
       </div>
@@ -147,14 +156,14 @@
       <!-- ── Secciones de la plantilla ──────────────────────── -->
       <div id="sectionsPanelWrap" class="mb-4" style="display:none;">
         <div class="gd-label d-flex align-items-center justify-content-between">
-          <span>Secciones detectadas en la plantilla</span>
+          <span data-i18n="sectionsDetected">Secciones detectadas en la plantilla</span>
           <div class="gd-sections-toggle-row">
-            <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn">Seleccionar todo</button>
+            <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn" data-i18n="selectAll">Seleccionar todo</button>
             <span class="gd-sections-sep">·</span>
-            <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn">Deseleccionar todo</button>
+            <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn" data-i18n="deselectAll">Deseleccionar todo</button>
           </div>
         </div>
-        <div class="gd-sections-hint">
+        <div class="gd-sections-hint" data-i18n-html="sectionsHint">
           Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM
           (las no marcadas se copian exactamente desde la plantilla).
           Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos
@@ -163,38 +172,38 @@
         <div id="sectionsList" class="gd-sections-panel">
           <!-- Column headers — sticky inside the scrollable panel -->
           <div class="gd-sections-cols-header">
-            <span class="gd-sections-col-label-name">Sección detectada</span>
-            <span class="gd-sections-col-label">Texto</span>
-            <span class="gd-sections-col-label">Tablas</span>
-            <span class="gd-sections-col-label">Diagramas</span>
+            <span class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
+            <span class="gd-sections-col-label" data-i18n="colText">Texto</span>
+            <span class="gd-sections-col-label" data-i18n="colTables">Tablas</span>
+            <span class="gd-sections-col-label" data-i18n="colDiagrams">Diagramas</span>
           </div>
         </div>
       </div>
 
       <!-- ── Tipo de documento ────────────────────────────────── -->
       <div class="mb-4">
-        <div class="gd-label">Tipo de documento <span style="color:#ef4444">*</span></div>
-        <div class="gd-segment" role="group" aria-label="Tipo de documento">
+        <div class="gd-label"><span data-i18n="docType">Tipo de documento</span> <span style="color:#ef4444">*</span></div>
+        <div class="gd-segment" role="group" data-i18n-aria-label="docType">
 
           <input type="radio" name="docType" id="dtTechnical"
                  class="gd-segment-input" value="technical" checked />
           <label for="dtTechnical" class="gd-segment-option">
             <span class="gd-segment-icon">🔧</span>
-            <span class="gd-segment-text">Documentación técnica</span>
+            <span class="gd-segment-text" data-i18n="docTypeTechnical">Documentación técnica</span>
           </label>
 
           <input type="radio" name="docType" id="dtUserManual"
                  class="gd-segment-input" value="user_manual" />
           <label for="dtUserManual" class="gd-segment-option">
             <span class="gd-segment-icon">📖</span>
-            <span class="gd-segment-text">Manual de Usuario</span>
+            <span class="gd-segment-text" data-i18n="docTypeUserManual">Manual de Usuario</span>
           </label>
 
           <input type="radio" name="docType" id="dtExecutive"
                  class="gd-segment-input" value="executive" />
           <label for="dtExecutive" class="gd-segment-option">
             <span class="gd-segment-icon">📊</span>
-            <span class="gd-segment-text">Presentación Ejecutiva</span>
+            <span class="gd-segment-text" data-i18n="docTypeExecutive">Presentación Ejecutiva</span>
           </label>
 
         </div>
@@ -203,24 +212,24 @@
       <!-- ── Paleta de colores ──────────────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">
-          Paleta de colores
-          <span class="badge-optional">Opcional</span>
+          <span data-i18n="colorPalette">Paleta de colores</span>
+          <span class="badge-optional" data-i18n="optional">Opcional</span>
         </div>
         <div class="gd-color-row">
 
           <label class="gd-color-item" for="colorPrimary">
             <input type="color" id="colorPrimary" class="gd-color-input" value="#2D3A8C" />
             <div class="gd-color-info">
-              <span class="gd-color-name">Color principal</span>
-              <span class="gd-color-desc">Título, subtítulos H1/H2 y encabezados de tablas</span>
+              <span class="gd-color-name" data-i18n="primaryColor">Color principal</span>
+              <span class="gd-color-desc" data-i18n="primaryColorDesc">Título, subtítulos H1/H2 y encabezados de tablas</span>
             </div>
           </label>
 
           <label class="gd-color-item" for="colorSecondary">
             <input type="color" id="colorSecondary" class="gd-color-input" value="#287A5F" />
             <div class="gd-color-info">
-              <span class="gd-color-name">Color secundario</span>
-              <span class="gd-color-desc">H3+, código, encabezados y pie de página</span>
+              <span class="gd-color-name" data-i18n="secondaryColor">Color secundario</span>
+              <span class="gd-color-desc" data-i18n="secondaryColorDesc">H3+, código, encabezados y pie de página</span>
             </div>
           </label>
 
@@ -229,9 +238,9 @@
 
       <!-- ── Botón principal ───────────────────────────────────── -->
       <button id="btnGenerate" class="btn-generate mb-1" disabled>
-        ⚡ Generar Documentación
+        ⚡ <span data-i18n="generateBtn">Generar Documentación</span>
       </button>
-      <div style="font-size:0.72rem; color:#b0b0b8; text-align:center; margin-bottom:1.25rem;">
+      <div id="generateHint" style="font-size:0.72rem; color:#b0b0b8; text-align:center; margin-bottom:1.25rem;" data-i18n="generateHint">
         Selecciona un repositorio para habilitar este botón
       </div>
 
@@ -241,7 +250,7 @@
       <div class="mb-3">
         <div class="gd-label d-flex align-items-center gap-2">
           <span id="statusDot" class="gd-status-dot"></span>
-          <span id="statusText">Listo</span>
+          <span id="statusText" data-i18n="statusIdle">Listo</span>
         </div>
         <textarea
           id="logArea"
@@ -249,6 +258,7 @@
           readonly
           rows="6"
           spellcheck="false"
+          data-i18n-aria-label="logAreaLabel"
           aria-label="Registro de actividad"
         ></textarea>
       </div>
@@ -256,7 +266,7 @@
       <!-- Progress bar -->
       <div class="gd-progress-container mb-4">
         <div class="gd-progress-header">
-          <span class="gd-progress-label">Progreso</span>
+          <span class="gd-progress-label" data-i18n="progress">Progreso</span>
           <span id="progressPct" class="gd-progress-pct">0%</span>
         </div>
         <div id="progressWrap" class="gd-progress-wrap">
@@ -267,13 +277,13 @@
       <!-- ── Botón de descarga ────────────────────────────────── -->
       <button id="btnDownload" class="btn-download" disabled>
         <span class="btn-download-icon">⬇️</span>
-        <span id="btnDownloadLabel">Descargar documentación</span>
+        <span id="btnDownloadLabel" data-i18n="downloadBtn">Descargar documentación</span>
       </button>
 
     </div><!-- /gd-card -->
 
     <p class="text-center mt-3" style="font-size:0.72rem; color:#b0b0b8;">
-      GenDoc v0.5 &mdash; Ejecutando en <code>localhost:5000</code>
+      GenDoc v0.5 &mdash; <span data-i18n="runningOn">Ejecutando en</span> <code>localhost:5000</code>
     </p>
 
   </div><!-- /container -->
@@ -282,13 +292,13 @@
   <div id="idleModal" class="gd-idle-overlay" style="display:none;" aria-modal="true" role="dialog">
     <div class="gd-idle-box">
       <div class="gd-idle-icon">⏱</div>
-      <p class="gd-idle-title">El servidor se cerrará automáticamente</p>
-      <p class="gd-idle-body">
+      <p class="gd-idle-title" data-i18n="idleTitle">El servidor se cerrará automáticamente</p>
+      <p class="gd-idle-body" data-i18n="idleBody">
         No se detectó actividad. GenDoc se apagará en
       </p>
       <div class="gd-idle-countdown" id="idleCountdown">30</div>
-      <p class="gd-idle-body">segundos.</p>
-      <button id="btnIdleKeepAlive" class="gd-idle-btn">
+      <p class="gd-idle-body" data-i18n="idleSeconds">segundos.</p>
+      <button id="btnIdleKeepAlive" class="gd-idle-btn" data-i18n="idleKeepAlive">
         Mantener activo
       </button>
     </div>
