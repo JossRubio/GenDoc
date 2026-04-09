@@ -1,5 +1,6 @@
 import json
 import secrets
+import time
 
 from flask import (
     Blueprint, Response, render_template, jsonify,
@@ -14,6 +15,19 @@ main = Blueprint("main", __name__)
 # In-memory token → absolute file path store.
 # Tokens are single-use and cleared on each new generation.
 _download_tokens: dict[str, str] = {}
+
+# ── Heartbeat (used only when running as GenDoc.exe) ─────────────────
+# launcher.py sets this to a callable that shuts the process down.
+# When running via run.py it stays None and heartbeats are ignored.
+_shutdown_callback = None
+_last_heartbeat: float = 0.0
+
+
+def register_shutdown(callback) -> None:
+    """Called by launcher.py to wire up the shutdown hook."""
+    global _shutdown_callback, _last_heartbeat
+    _shutdown_callback = callback
+    _last_heartbeat = time.monotonic()
 
 
 @main.route("/")
@@ -139,3 +153,14 @@ def api_download(token: str):
         return jsonify({"error": "Sin permisos para leer el archivo generado."}), 403
     except OSError as exc:
         return jsonify({"error": f"Error al enviar el archivo: {exc}"}), 500
+
+
+@main.route("/api/heartbeat", methods=["POST"])
+def api_heartbeat():
+    """
+    Called by the browser every few seconds while the tab is open.
+    Only has effect when running as GenDoc.exe (shutdown callback is registered).
+    """
+    global _last_heartbeat
+    _last_heartbeat = time.monotonic()
+    return "", 204

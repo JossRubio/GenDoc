@@ -628,6 +628,16 @@ ui.templateInput.addEventListener("input", () => {
   if (!hasTemplate) clearSectionsPanel();
 });
 
+// ── Heartbeat (keeps GenDoc.exe alive while tab is open) ─────────────
+
+(function startHeartbeat() {
+  async function ping() {
+    try { await fetch("/api/heartbeat", { method: "POST" }); } catch {}
+  }
+  ping();
+  setInterval(ping, 5000);
+})();
+
 // ── Init ─────────────────────────────────────────────────────────────
 
 setStatus("idle");

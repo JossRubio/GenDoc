@@ -78,6 +78,29 @@ def main() -> None:
             )
             sys.exit(1)
 
+    # ── Register shutdown hook & heartbeat watchdog ───────────────────
+    # The watchdog runs in a daemon thread and calls os._exit(0) if no
+    # heartbeat is received for HEARTBEAT_TIMEOUT seconds (browser closed).
+    HEARTBEAT_TIMEOUT = 20  # seconds
+
+    def _shutdown() -> None:
+        os._exit(0)
+
+    from app.routes import register_shutdown
+    register_shutdown(_shutdown)
+
+    def _watchdog() -> None:
+        from app.routes import _last_heartbeat as _lhb_ref
+        import app.routes as _routes_mod
+        time.sleep(HEARTBEAT_TIMEOUT)          # give browser time to connect first
+        while True:
+            time.sleep(5)
+            elapsed = time.monotonic() - _routes_mod._last_heartbeat
+            if elapsed > HEARTBEAT_TIMEOUT:
+                _shutdown()
+
+    threading.Thread(target=_watchdog, daemon=True).start()
+
     threading.Thread(target=_open_browser, daemon=True).start()
 
     # Use Werkzeug's threaded server (supports SSE streaming correctly)
