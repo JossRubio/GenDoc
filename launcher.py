@@ -67,20 +67,27 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Check if port is already in use before starting
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        if _s.connect_ex(("127.0.0.1", PORT)) == 0:
+            _show_error(
+                f"El puerto {PORT} ya está en uso.\n\n"
+                "Puede que haya otra instancia de GenDoc corriendo.\n"
+                "Ciérrala e intenta de nuevo."
+            )
+            sys.exit(1)
+
     threading.Thread(target=_open_browser, daemon=True).start()
 
-    try:
-        # Prefer waitress (production WSGI) over Flask dev server
-        from waitress import serve
-        serve(flask_app, host="127.0.0.1", port=PORT, threads=4)
-    except ImportError:
-        flask_app.run(
-            host="127.0.0.1",
-            port=PORT,
-            debug=False,
-            use_reloader=False,
-            threaded=True,
-        )
+    # Use Werkzeug's threaded server (supports SSE streaming correctly)
+    flask_app.run(
+        host="127.0.0.1",
+        port=PORT,
+        debug=False,
+        use_reloader=False,
+        threaded=True,
+    )
 
 
 if __name__ == "__main__":

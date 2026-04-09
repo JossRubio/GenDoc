@@ -22,9 +22,6 @@ a = Analysis(
         "jinja2",
         "jinja2.ext",
         "click",
-        # Production WSGI server
-        "waitress",
-        "waitress.runner",
         # AI providers
         "anthropic",
         "openai",
