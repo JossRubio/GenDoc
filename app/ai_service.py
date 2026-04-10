@@ -29,6 +29,9 @@ _OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
 # Anthropic models that support text generation (display name suffix filter)
 # We rely on the SDK listing, so no manual list needed.
 
+# Azure OpenAI default API version (used when AZURE_OPENAI_API_VERSION is not set)
+_AZURE_DEFAULT_API_VERSION = "2024-12-01-preview"
+
 # Google fallback chain (tried in order when primary returns a retryable error)
 _GOOGLE_FALLBACK_MODELS = [
     "gemini-3-flash-preview",
@@ -36,6 +39,28 @@ _GOOGLE_FALLBACK_MODELS = [
     "gemini-2.5-flash",
 ]
 _GOOGLE_RETRYABLE_CODES = {404, 429, 503}
+
+
+# ── Azure config helper ───────────────────────────────────────────────
+
+def _get_azure_config() -> tuple[str, str]:
+    """
+    Return (endpoint, api_version) from environment variables.
+
+    Raises ValueError if AZURE_OPENAI_ENDPOINT is not set.
+    """
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_version = (
+        os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
+        or _AZURE_DEFAULT_API_VERSION
+    )
+    if not endpoint:
+        raise ValueError(
+            "AZURE_OPENAI_ENDPOINT no está configurado en el archivo .env. "
+            "Agrega la URL de tu recurso de Azure OpenAI, por ejemplo: "
+            "https://<nombre-recurso>.openai.azure.com/"
+        )
+    return endpoint, api_version
 
 
 # ── Provider detection ────────────────────────────────────────────────
@@ -285,6 +310,79 @@ def _call_openai(prompt: str, api_key: str, model: str) -> str:
         raise RuntimeError(f"Error inesperado (OpenAI): {exc}") from exc
 
 
+# ── Azure OpenAI helpers ──────────────────────────────────────────────
+
+def _list_azure(api_key: str) -> list[dict]:
+    try:
+        from openai import AzureOpenAI
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'openai' no está instalado. "
+            "Ejecuta: pip install openai"
+        )
+    endpoint, api_version = _get_azure_config()
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_key=api_key,
+            api_version=api_version,
+        )
+        result = []
+        for m in client.models.list():
+            mid = getattr(m, "id", None) or ""
+            if mid:
+                result.append({"id": mid, "display_name": mid})
+        return result
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"Error al listar modelos de Azure OpenAI: {exc}") from exc
+
+
+def _call_azure(prompt: str, api_key: str, model: str) -> str:
+    try:
+        import openai as _openai
+        from openai import AzureOpenAI
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'openai' no está instalado. "
+            "Ejecuta: pip install openai"
+        )
+    endpoint, api_version = _get_azure_config()
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_key=api_key,
+            api_version=api_version,
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.choices[0].message.content if response.choices else ""
+        if not text or not text.strip():
+            raise RuntimeError("Azure OpenAI devolvió una respuesta vacía.")
+        return text
+    except _openai.AuthenticationError as exc:
+        raise RuntimeError(
+            f"API key de Azure OpenAI inválida o no autorizada: {exc}"
+        ) from exc
+    except _openai.RateLimitError as exc:
+        raise RuntimeError(f"Cuota de Azure OpenAI superada (429): {exc}") from exc
+    except _openai.APIStatusError as exc:
+        raise RuntimeError(
+            f"Error de la API de Azure OpenAI ({exc.status_code}): {exc}"
+        ) from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise RuntimeError(
+            f"No se pudo conectar con Azure OpenAI. Detalle: {exc}"
+        ) from exc
+    except (ValueError, RuntimeError):
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"Error inesperado (Azure OpenAI): {exc}") from exc
+
+
 # ── Public API ────────────────────────────────────────────────────────
 
 def list_models(api_key: str, provider: str | None = None) -> list[dict]:
@@ -310,6 +408,8 @@ def list_models(api_key: str, provider: str | None = None) -> list[dict]:
         return _list_anthropic(api_key)
     if prov == "openai":
         return _list_openai(api_key)
+    if prov == "azure":
+        return _list_azure(api_key)
     return _list_google(api_key)
 
 
@@ -368,6 +468,11 @@ def call_llm(
         if not model:
             model = "gpt-4o"
         return _call_openai(prompt, api_key, model)
+
+    if provider == "azure":
+        if not model:
+            model = os.getenv("LLM_MODEL", "").strip() or "gpt-4o"
+        return _call_azure(prompt, api_key, model)
 
     # Google (default)
     if not model:

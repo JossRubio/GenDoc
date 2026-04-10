@@ -395,16 +395,19 @@ function setDocTypeEnabled(enabled) {
 
 // ── LLM config ───────────────────────────────────────────────────────
 
-// Auto-detect provider from key prefix and sync the selector
+// Auto-detect provider from key prefix and sync the selector.
+// Only switches for known patterns; Azure and Google keys have no standard prefix
+// so the user must select those manually.
 function detectProvider(key) {
   if (key.startsWith("sk-ant-")) return "anthropic";
   if (key.startsWith("sk-"))     return "openai";
-  return "google";
+  return null;  // unknown — don't auto-switch
 }
 
 ui.apiKeyInput.addEventListener("input", () => {
-  const key = ui.apiKeyInput.value.trim();
-  if (key) ui.providerSelect.value = detectProvider(key);
+  const key      = ui.apiKeyInput.value.trim();
+  const detected = key ? detectProvider(key) : null;
+  if (detected) ui.providerSelect.value = detected;
 });
 
 ui.btnToggleApiKey.addEventListener("click", () => {
