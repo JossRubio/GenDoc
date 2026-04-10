@@ -414,9 +414,14 @@ function isAzure() {
 
 function syncAzureUI() {
   const azure = isAzure();
-  ui.btnLoadModels.style.display        = azure ? "none"  : "";
-  ui.modelSelectorWrap.style.display    = azure ? "none"  : (ui.modelSelectorWrap.dataset.wasVisible === "true" ? "block" : "none");
-  ui.azureDeploymentWrap.style.display  = azure ? "block" : "none";
+  // Load models button always visible for all providers
+  ui.btnLoadModels.style.display = "";
+  // Manual deployment input only visible for Azure (as complement / fallback)
+  ui.azureDeploymentWrap.style.display = azure ? "block" : "none";
+  // If switching away from Azure, hide the model selector until models are loaded
+  if (!azure && ui.modelSelectorWrap.dataset.wasVisible !== "true") {
+    ui.modelSelectorWrap.style.display = "none";
+  }
 }
 
 ui.providerSelect.addEventListener("change", syncAzureUI);
@@ -480,6 +485,10 @@ async function loadModels() {
 
     setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
     log(`${t("logModelsLoaded")} ${models.length}`, "success");
+    // For Azure: hide the manual input when the dropdown is populated
+    if (isAzure() && models.length > 0) {
+      ui.azureDeploymentWrap.style.display = "none";
+    }
   } catch (err) {
     setModelStatus(t("logConnectError"), "error");
     ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;

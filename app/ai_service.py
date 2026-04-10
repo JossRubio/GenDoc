@@ -29,8 +29,8 @@ _OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
 # Anthropic models that support text generation (display name suffix filter)
 # We rely on the SDK listing, so no manual list needed.
 
-# Azure OpenAI default API version (used when AZURE_OPENAI_API_VERSION is not set)
-_AZURE_DEFAULT_API_VERSION = "2024-12-01-preview"
+# Azure AI default API version (used when AZURE_AI_API_VERSION is not set)
+_AZURE_DEFAULT_API_VERSION = "2025-01-01-preview"
 
 # Google fallback chain (tried in order when primary returns a retryable error)
 _GOOGLE_FALLBACK_MODELS = [
@@ -41,44 +41,51 @@ _GOOGLE_FALLBACK_MODELS = [
 _GOOGLE_RETRYABLE_CODES = {404, 429, 503}
 
 
-# ── Azure config helper ───────────────────────────────────────────────
+# ── Azure AI config helper ────────────────────────────────────────────
 
-def _get_azure_config() -> tuple[str, str, bool]:
+def _get_azure_config() -> tuple[str, str | None, str, bool]:
     """
-    Parse AZURE_OPENAI_ENDPOINT and return (base_url, api_version, is_foundry).
+    Parse AZURE_AI_ENDPOINT and return
+    (openai_base_url, project_base_url, api_version, is_foundry).
+
+    openai_base_url  → used by openai.OpenAI / AzureOpenAI for chat completions.
+    project_base_url → used by the management API to list deployments (Foundry only).
 
     is_foundry=True  → Azure AI Foundry project endpoint (.services.ai.azure.com)
-                       Uses openai.OpenAI(base_url=...) — no AzureOpenAI client.
     is_foundry=False → Classic Azure OpenAI endpoint (.openai.azure.com)
-                       Uses AzureOpenAI(azure_endpoint=...).
 
-    Accepts the full "Target URI" that Foundry shows (e.g. ending in
-    /openai/v1/responses) and automatically trims it to the correct base.
+    Accepts the full "Target URI" from Foundry (e.g. ending in /openai/v1/responses)
+    and automatically extracts the correct base URL.
 
-    Raises ValueError if AZURE_OPENAI_ENDPOINT is not set.
+    Supports both AZURE_AI_ENDPOINT (new) and AZURE_OPENAI_ENDPOINT (legacy).
+    Raises ValueError if neither is set.
     """
-    raw = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+    raw = (
+        os.getenv("AZURE_AI_ENDPOINT", "").strip()
+        or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()   # backward compat
+    )
     if not raw:
         raise ValueError(
-            "AZURE_OPENAI_ENDPOINT no está configurado en el archivo .env. "
+            "AZURE_AI_ENDPOINT no está configurado en el archivo .env. "
             "Pega el 'Target URI' de tu deployment en Azure AI Foundry."
         )
 
     api_version = (
-        os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
+        os.getenv("AZURE_AI_API_VERSION", "").strip()
+        or os.getenv("AZURE_OPENAI_API_VERSION", "").strip()  # backward compat
         or _AZURE_DEFAULT_API_VERSION
     )
 
     # Azure AI Foundry project endpoint — contains /openai/v1/ in the path.
-    # Strip any API-specific suffix (/responses, /chat/completions, etc.) so
-    # that openai.OpenAI can append the correct path itself.
     if "/openai/v1/" in raw:
-        base_url = raw[: raw.index("/openai/v1/") + len("/openai/v1/")]
-        return base_url, api_version, True
+        openai_base  = raw[: raw.index("/openai/v1/") + len("/openai/v1/")]
+        project_base = raw[: raw.index("/openai/v1/")]   # everything before /openai/v1/
+        if not project_base.endswith("/"):
+            project_base += "/"
+        return openai_base, project_base, api_version, True
 
-    # Classic Azure OpenAI endpoint (.openai.azure.com) — AzureOpenAI client
-    # constructs the deployment path automatically.
-    return raw.rstrip("/") + "/", api_version, False
+    # Classic Azure OpenAI endpoint (.openai.azure.com)
+    return raw.rstrip("/") + "/", None, api_version, False
 
 
 # ── Provider detection ────────────────────────────────────────────────
@@ -328,7 +335,7 @@ def _call_openai(prompt: str, api_key: str, model: str) -> str:
         raise RuntimeError(f"Error inesperado (OpenAI): {exc}") from exc
 
 
-# ── Azure OpenAI helpers ──────────────────────────────────────────────
+# ── Azure AI helpers ──────────────────────────────────────────────────
 
 def _azure_client(api_key: str):
     """
@@ -344,22 +351,65 @@ def _azure_client(api_key: str):
             "El paquete 'openai' no está instalado. "
             "Ejecuta: pip install openai"
         )
-    base_url, api_version, is_foundry = _get_azure_config()
+    openai_base, _project_base, api_version, is_foundry = _get_azure_config()
     if is_foundry:
-        return _openai.OpenAI(base_url=base_url, api_key=api_key)
+        return _openai.OpenAI(base_url=openai_base, api_key=api_key)
     return _openai.AzureOpenAI(
-        azure_endpoint=base_url, api_key=api_key, api_version=api_version
+        azure_endpoint=openai_base, api_key=api_key, api_version=api_version
     )
 
 
 def _list_azure(api_key: str) -> list[dict]:
+    """
+    List deployments from Azure AI Foundry using the management REST API.
+
+    For Foundry endpoints, calls:
+      GET {project_base_url}deployments?api-version={version}
+    which returns all models deployed in the project (gpt-4.1, DeepSeek-V3.2, etc.).
+
+    For classic Azure OpenAI endpoints, falls back to openai client models.list().
+    """
+    import httpx
+
+    openai_base, project_base, api_version, is_foundry = _get_azure_config()
+
+    if is_foundry and project_base:
+        # Use the Azure AI Foundry deployments management API
+        url = f"{project_base}deployments"
+        try:
+            resp = httpx.get(
+                url,
+                params={"api-version": api_version},
+                headers={"api-key": api_key, "Authorization": f"Bearer {api_key}"},
+                timeout=15,
+            )
+            if resp.status_code == 401:
+                raise ValueError("API key de Azure AI inválida o no autorizada (401).")
+            if resp.status_code == 403:
+                raise ValueError("Sin permisos para listar deployments en Azure AI (403).")
+            resp.raise_for_status()
+            data = resp.json()
+            deployments = data.get("value", [])
+            result = []
+            for d in deployments:
+                name = d.get("name") or d.get("id") or ""
+                if name:
+                    result.append({"id": name, "display_name": name})
+            return result
+        except ValueError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(
+                f"Error al listar deployments de Azure AI ({exc.response.status_code}): {exc}"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(f"Error al listar deployments de Azure AI: {exc}") from exc
+
+    # Classic Azure OpenAI — use the OpenAI SDK models endpoint
     try:
         import openai as _openai
     except ImportError:
-        raise RuntimeError(
-            "El paquete 'openai' no está instalado. "
-            "Ejecuta: pip install openai"
-        )
+        raise RuntimeError("El paquete 'openai' no está instalado.")
     try:
         client = _azure_client(api_key)
         result = []
@@ -368,16 +418,12 @@ def _list_azure(api_key: str) -> list[dict]:
             if mid:
                 result.append({"id": mid, "display_name": mid})
         return result
-    except (ValueError, RuntimeError):
+    except ValueError:
         raise
     except _openai.AuthenticationError as exc:
-        raise ValueError(f"API key de Azure inválida o no autorizada: {exc}") from exc
-    except _openai.NotFoundError:
-        # Azure AI Foundry project endpoints don't expose /models — return empty list.
-        # The UI will show the manual deployment-name input instead.
-        return []
+        raise ValueError(f"API key de Azure AI inválida o no autorizada: {exc}") from exc
     except Exception as exc:
-        raise RuntimeError(f"Error al listar modelos de Azure: {exc}") from exc
+        raise RuntimeError(f"Error al listar modelos de Azure AI: {exc}") from exc
 
 
 def _call_azure(prompt: str, api_key: str, model: str) -> str:
@@ -409,7 +455,7 @@ def _call_azure(prompt: str, api_key: str, model: str) -> str:
     except (ValueError, RuntimeError):
         raise
     except Exception as exc:
-        raise RuntimeError(f"Error inesperado (Azure): {exc}") from exc
+        raise RuntimeError(f"Error inesperado (Azure AI): {exc}") from exc
 
 
 # ── Public API ────────────────────────────────────────────────────────
