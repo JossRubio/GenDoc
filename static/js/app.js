@@ -44,6 +44,8 @@ const ui = {
   modelSelectorWrap:      document.getElementById("modelSelectorWrap"),
   modelSelect:            document.getElementById("modelSelect"),
   modelLoadStatus:        document.getElementById("modelLoadStatus"),
+  azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
+  azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
 };
 
 // ── i18n ─────────────────────────────────────────────────────────────
@@ -126,6 +128,7 @@ const TRANSLATIONS = {
     errorLoading:      "— Error al cargar —",
     modelsAvailable:   "modelo(s) disponible(s)",
     modelError:        "Error:",
+    azureDeploymentPlaceholder: "Nombre del deployment (ej: gpt-4.1)…",
   },
   en: {
     subtitle:          "Automatic documentation generator for repositories",
@@ -204,6 +207,7 @@ const TRANSLATIONS = {
     errorLoading:      "— Error loading —",
     modelsAvailable:   "model(s) available",
     modelError:        "Error:",
+    azureDeploymentPlaceholder: "Deployment name (e.g. gpt-4.1)…",
   },
 };
 
@@ -404,10 +408,26 @@ function detectProvider(key) {
   return null;  // unknown — don't auto-switch
 }
 
+function isAzure() {
+  return ui.providerSelect.value === "azure";
+}
+
+function syncAzureUI() {
+  const azure = isAzure();
+  ui.btnLoadModels.style.display        = azure ? "none"  : "";
+  ui.modelSelectorWrap.style.display    = azure ? "none"  : (ui.modelSelectorWrap.dataset.wasVisible === "true" ? "block" : "none");
+  ui.azureDeploymentWrap.style.display  = azure ? "block" : "none";
+}
+
+ui.providerSelect.addEventListener("change", syncAzureUI);
+
+// Run once on load in case Azure is pre-selected
+syncAzureUI();
+
 ui.apiKeyInput.addEventListener("input", () => {
   const key      = ui.apiKeyInput.value.trim();
   const detected = key ? detectProvider(key) : null;
-  if (detected) ui.providerSelect.value = detected;
+  if (detected) { ui.providerSelect.value = detected; syncAzureUI(); }
 });
 
 ui.btnToggleApiKey.addEventListener("click", () => {
@@ -431,6 +451,7 @@ async function loadModels() {
 
   ui.btnLoadModels.disabled = true;
   ui.modelSelectorWrap.style.display = "block";
+  ui.modelSelectorWrap.dataset.wasVisible = "true";
   setModelStatus(t("loadingModels"), "loading");
   ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
 
@@ -778,7 +799,9 @@ async function generate() {
 
   try {
     const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
-    const modelOverride    = ui.modelSelect.value.trim() || null;
+    const modelOverride    = isAzure()
+      ? (ui.azureDeploymentInput.value.trim() || null)
+      : (ui.modelSelect.value.trim() || null);
     const providerOverride = apiKeyOverride ? ui.providerSelect.value : null;
 
     const resp = await fetch("/api/generate", {

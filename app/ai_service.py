@@ -372,6 +372,10 @@ def _list_azure(api_key: str) -> list[dict]:
         raise
     except _openai.AuthenticationError as exc:
         raise ValueError(f"API key de Azure inválida o no autorizada: {exc}") from exc
+    except _openai.NotFoundError:
+        # Azure AI Foundry project endpoints don't expose /models — return empty list.
+        # The UI will show the manual deployment-name input instead.
+        return []
     except Exception as exc:
         raise RuntimeError(f"Error al listar modelos de Azure: {exc}") from exc
 

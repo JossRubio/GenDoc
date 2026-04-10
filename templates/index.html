@@ -105,6 +105,19 @@
           </div>
         </div>
 
+        <!-- Azure: manual deployment name (shown when provider = azure) -->
+        <div id="azureDeploymentWrap" style="display:none;">
+          <input
+            id="azureDeploymentInput"
+            type="text"
+            class="gd-path-input"
+            data-i18n-placeholder="azureDeploymentPlaceholder"
+            placeholder="Nombre del deployment (ej: gpt-4.1)…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
         <div style="font-size:0.75rem; color:#a0a0aa; margin-top:0.35rem; padding-left:0.1rem;" data-i18n="apiKeyHint">
           Si no configuras una API key, se usará la definida en el servidor.
         </div>
