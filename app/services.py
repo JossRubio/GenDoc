@@ -445,8 +445,12 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     yield _log(_m(lang, "building_prompt"))
     yield _log(_m(lang, "generating"))
 
-    try:
-        markdown = generator.generate(
+    import concurrent.futures as _cf
+
+    _LLM_TIMEOUT = 300  # seconds — abort if provider does not respond
+
+    def _do_generate():
+        return generator.generate(
             repo_scan, template_content, locked_sections,
             section_enrichments=section_enrichments,
             api_key_override=api_key_override,
@@ -454,6 +458,20 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             provider_override=provider_override,
             output_lang=output_lang,
         )
+
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+            _future = _pool.submit(_do_generate)
+            try:
+                markdown = _future.result(timeout=_LLM_TIMEOUT)
+            except _cf.TimeoutError:
+                _future.cancel()
+                yield _error(
+                    f"{'The LLM did not respond within' if lang == 'en' else 'El modelo no respondió en'} "
+                    f"{_LLM_TIMEOUT}s. "
+                    f"{'Try again or check your connection.' if lang == 'en' else 'Intenta de nuevo o verifica tu conexión.'}"
+                )
+                return
     except ValueError as exc:
         yield _error(f"{_m(lang, 'config_error')}: {exc}")
         return
@@ -513,7 +531,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         from . import md_to_pdf
         _converter = lambda: md_to_pdf.convert(markdown, output_path, **kwargs)  # noqa: E731
     else:
-        _converter = lambda: md_to_docx.convert(markdown, output_path, **kwargs)  # noqa: E731
+        _docx_kwargs = {**kwargs, "output_lang": output_lang}
+        _converter = lambda: md_to_docx.convert(markdown, output_path, **_docx_kwargs)  # noqa: E731
 
     try:
         with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
