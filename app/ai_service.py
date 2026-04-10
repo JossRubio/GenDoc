@@ -43,24 +43,42 @@ _GOOGLE_RETRYABLE_CODES = {404, 429, 503}
 
 # ── Azure config helper ───────────────────────────────────────────────
 
-def _get_azure_config() -> tuple[str, str]:
+def _get_azure_config() -> tuple[str, str, bool]:
     """
-    Return (endpoint, api_version) from environment variables.
+    Parse AZURE_OPENAI_ENDPOINT and return (base_url, api_version, is_foundry).
+
+    is_foundry=True  → Azure AI Foundry project endpoint (.services.ai.azure.com)
+                       Uses openai.OpenAI(base_url=...) — no AzureOpenAI client.
+    is_foundry=False → Classic Azure OpenAI endpoint (.openai.azure.com)
+                       Uses AzureOpenAI(azure_endpoint=...).
+
+    Accepts the full "Target URI" that Foundry shows (e.g. ending in
+    /openai/v1/responses) and automatically trims it to the correct base.
 
     Raises ValueError if AZURE_OPENAI_ENDPOINT is not set.
     """
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    raw = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+    if not raw:
+        raise ValueError(
+            "AZURE_OPENAI_ENDPOINT no está configurado en el archivo .env. "
+            "Pega el 'Target URI' de tu deployment en Azure AI Foundry."
+        )
+
     api_version = (
         os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
         or _AZURE_DEFAULT_API_VERSION
     )
-    if not endpoint:
-        raise ValueError(
-            "AZURE_OPENAI_ENDPOINT no está configurado en el archivo .env. "
-            "Agrega la URL de tu recurso de Azure OpenAI, por ejemplo: "
-            "https://<nombre-recurso>.openai.azure.com/"
-        )
-    return endpoint, api_version
+
+    # Azure AI Foundry project endpoint — contains /openai/v1/ in the path.
+    # Strip any API-specific suffix (/responses, /chat/completions, etc.) so
+    # that openai.OpenAI can append the correct path itself.
+    if "/openai/v1/" in raw:
+        base_url = raw[: raw.index("/openai/v1/") + len("/openai/v1/")]
+        return base_url, api_version, True
+
+    # Classic Azure OpenAI endpoint (.openai.azure.com) — AzureOpenAI client
+    # constructs the deployment path automatically.
+    return raw.rstrip("/") + "/", api_version, False
 
 
 # ── Provider detection ────────────────────────────────────────────────
@@ -312,75 +330,82 @@ def _call_openai(prompt: str, api_key: str, model: str) -> str:
 
 # ── Azure OpenAI helpers ──────────────────────────────────────────────
 
-def _list_azure(api_key: str) -> list[dict]:
+def _azure_client(api_key: str):
+    """
+    Build and return the correct OpenAI client for the configured Azure endpoint.
+
+    Azure AI Foundry project endpoints → openai.OpenAI(base_url=...)
+    Classic Azure OpenAI endpoints     → openai.AzureOpenAI(azure_endpoint=...)
+    """
     try:
-        from openai import AzureOpenAI
+        import openai as _openai
     except ImportError:
         raise RuntimeError(
             "El paquete 'openai' no está instalado. "
             "Ejecuta: pip install openai"
         )
-    endpoint, api_version = _get_azure_config()
+    base_url, api_version, is_foundry = _get_azure_config()
+    if is_foundry:
+        return _openai.OpenAI(base_url=base_url, api_key=api_key)
+    return _openai.AzureOpenAI(
+        azure_endpoint=base_url, api_key=api_key, api_version=api_version
+    )
+
+
+def _list_azure(api_key: str) -> list[dict]:
     try:
-        client = AzureOpenAI(
-            azure_endpoint=endpoint,
-            api_key=api_key,
-            api_version=api_version,
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError(
+            "El paquete 'openai' no está instalado. "
+            "Ejecuta: pip install openai"
         )
+    try:
+        client = _azure_client(api_key)
         result = []
         for m in client.models.list():
             mid = getattr(m, "id", None) or ""
             if mid:
                 result.append({"id": mid, "display_name": mid})
         return result
-    except ValueError:
+    except (ValueError, RuntimeError):
         raise
+    except _openai.AuthenticationError as exc:
+        raise ValueError(f"API key de Azure inválida o no autorizada: {exc}") from exc
     except Exception as exc:
-        raise RuntimeError(f"Error al listar modelos de Azure OpenAI: {exc}") from exc
+        raise RuntimeError(f"Error al listar modelos de Azure: {exc}") from exc
 
 
 def _call_azure(prompt: str, api_key: str, model: str) -> str:
     try:
         import openai as _openai
-        from openai import AzureOpenAI
     except ImportError:
         raise RuntimeError(
             "El paquete 'openai' no está instalado. "
             "Ejecuta: pip install openai"
         )
-    endpoint, api_version = _get_azure_config()
     try:
-        client = AzureOpenAI(
-            azure_endpoint=endpoint,
-            api_key=api_key,
-            api_version=api_version,
-        )
+        client = _azure_client(api_key)
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.choices[0].message.content if response.choices else ""
         if not text or not text.strip():
-            raise RuntimeError("Azure OpenAI devolvió una respuesta vacía.")
+            raise RuntimeError("Azure devolvió una respuesta vacía.")
         return text
     except _openai.AuthenticationError as exc:
-        raise RuntimeError(
-            f"API key de Azure OpenAI inválida o no autorizada: {exc}"
-        ) from exc
+        raise RuntimeError(f"API key de Azure inválida o no autorizada: {exc}") from exc
     except _openai.RateLimitError as exc:
-        raise RuntimeError(f"Cuota de Azure OpenAI superada (429): {exc}") from exc
+        raise RuntimeError(f"Cuota de Azure superada (429): {exc}") from exc
     except _openai.APIStatusError as exc:
-        raise RuntimeError(
-            f"Error de la API de Azure OpenAI ({exc.status_code}): {exc}"
-        ) from exc
+        raise RuntimeError(f"Error de la API de Azure ({exc.status_code}): {exc}") from exc
     except (ConnectionError, TimeoutError, OSError) as exc:
-        raise RuntimeError(
-            f"No se pudo conectar con Azure OpenAI. Detalle: {exc}"
-        ) from exc
+        raise RuntimeError(f"No se pudo conectar con Azure. Detalle: {exc}") from exc
     except (ValueError, RuntimeError):
         raise
     except Exception as exc:
-        raise RuntimeError(f"Error inesperado (Azure OpenAI): {exc}") from exc
+        raise RuntimeError(f"Error inesperado (Azure): {exc}") from exc
 
 
 # ── Public API ────────────────────────────────────────────────────────
