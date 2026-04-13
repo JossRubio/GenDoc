@@ -44,6 +44,7 @@ const ui = {
   modelSelectorWrap:      document.getElementById("modelSelectorWrap"),
   modelSelect:            document.getElementById("modelSelect"),
   modelLoadStatus:        document.getElementById("modelLoadStatus"),
+  azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
   azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
   azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
 };
@@ -59,7 +60,7 @@ const TRANSLATIONS = {
     optional:          "Opcional",
     apiKeyPlaceholder: "API key del proveedor seleccionado…",
     showHide:          "Mostrar / ocultar",
-    loadModels:        "Cargar modelos",
+    loadModels:        "Modelos recomendados",
     selectModel:       "— Selecciona un modelo —",
     apiKeyHint:        "Si no configuras una API key, se usará la definida en el servidor.",
     repository:        "Repositorio",
@@ -129,6 +130,10 @@ const TRANSLATIONS = {
     modelsAvailable:   "modelo(s) disponible(s)",
     modelError:        "Error:",
     azureDeploymentPlaceholder: "Nombre del deployment (ej: gpt-4.1)…",
+    azureRecommendedTitle: "Modelos recomendados",
+    azureRecommendedWarn:  "(deben estar deployados en Azure AI Foundry)",
+    azureManualTitle:      "Modelo",
+    azureManualHint:       "(si no tienes en deploy las recomendaciones)",
   },
   en: {
     subtitle:          "Automatic documentation generator for repositories",
@@ -138,7 +143,7 @@ const TRANSLATIONS = {
     optional:          "Optional",
     apiKeyPlaceholder: "API key for the selected provider…",
     showHide:          "Show / hide",
-    loadModels:        "Load models",
+    loadModels:        "Recommended models",
     selectModel:       "— Select a model —",
     apiKeyHint:        "If you don't configure an API key, the server-defined one will be used.",
     repository:        "Repository",
@@ -208,6 +213,10 @@ const TRANSLATIONS = {
     modelsAvailable:   "model(s) available",
     modelError:        "Error:",
     azureDeploymentPlaceholder: "Deployment name (e.g. gpt-4.1)…",
+    azureRecommendedTitle: "Recommended models",
+    azureRecommendedWarn:  "(must be deployed in Azure AI Foundry first)",
+    azureManualTitle:      "Model",
+    azureManualHint:       "(if recommended models are not deployed)",
   },
 };
 
@@ -416,10 +425,13 @@ function syncAzureUI() {
   const azure = isAzure();
   // Load models button always visible for all providers
   ui.btnLoadModels.style.display = "";
-  // Manual deployment input only visible for Azure (as complement / fallback)
-  ui.azureDeploymentWrap.style.display = azure ? "block" : "none";
-  // If switching away from Azure, hide the model selector until models are loaded
-  if (!azure && ui.modelSelectorWrap.dataset.wasVisible !== "true") {
+  // Azure-only columns: dropdown label and manual input
+  ui.azureDropdownLabel.style.display  = azure ? "" : "none";
+  ui.azureDeploymentWrap.style.display = azure ? "" : "none";
+  // For Azure, show the model selector wrap immediately (no need to click first)
+  if (azure) {
+    ui.modelSelectorWrap.style.display = "";
+  } else if (ui.modelSelectorWrap.dataset.wasVisible !== "true") {
     ui.modelSelectorWrap.style.display = "none";
   }
 }
@@ -485,10 +497,6 @@ async function loadModels() {
 
     setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
     log(`${t("logModelsLoaded")} ${models.length}`, "success");
-    // For Azure: hide the manual input when the dropdown is populated
-    if (isAzure() && models.length > 0) {
-      ui.azureDeploymentWrap.style.display = "none";
-    }
   } catch (err) {
     setModelStatus(t("logConnectError"), "error");
     ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;

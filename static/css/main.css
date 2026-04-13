@@ -905,6 +905,38 @@ body {
 [data-theme="dark"] .gd-model-status--success { color: #4ade80; }
 [data-theme="dark"] .gd-model-status--warn    { color: #fbbf24; }
 
+/* ── Two-column model picker (Azure AI) ──────────────────────────── */
+.gd-model-cols {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.gd-model-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-model-col-label {
+  font-size: 0.76rem;
+  color: var(--gd-muted);
+  margin-bottom: 0.35rem;
+  line-height: 1.45;
+}
+
+.gd-model-col-warn {
+  color: #ca8a04;
+}
+
+[data-theme="dark"] .gd-model-col-warn {
+  color: #fbbf24;
+}
+
+.gd-model-col .gd-path-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Responsive tweaks */
 @media (max-width: 540px) {
   .gd-card {
