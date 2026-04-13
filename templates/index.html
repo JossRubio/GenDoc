@@ -91,8 +91,13 @@
             </button>
           </div>
           <button id="btnLoadModels" class="btn-browse" type="button">
-            🔍 <span data-i18n="loadModels">Cargar modelos</span>
+            🔑 <span data-i18n="loadModels">Cargar API-key</span>
           </button>
+        </div>
+
+        <!-- API key validation status -->
+        <div id="keyValidStatusWrap" style="min-height:1.1rem; margin-bottom:0.25rem;">
+          <span id="keyValidStatus" class="gd-key-valid-status"></span>
         </div>
 
         <!-- Model selector + Azure manual input (two-column layout for Azure) -->

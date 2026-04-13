@@ -81,6 +81,24 @@ def api_list_models():
         return jsonify({"error": str(exc)}), 500
 
 
+@main.route("/api/validate_key", methods=["POST"])
+def api_validate_key():
+    body     = request.get_json(silent=True) or {}
+    api_key  = (body.get("api_key")  or "").strip()
+    provider = (body.get("provider") or "").strip() or None
+
+    if not api_key:
+        return jsonify({"valid": False, "error": "No se proporcionó API key."}), 400
+
+    try:
+        models = ai_service.validate_key(api_key, provider)
+        return jsonify({"valid": True, "models": models})
+    except ValueError as exc:
+        return jsonify({"valid": False, "error": str(exc)})
+    except Exception as exc:
+        return jsonify({"valid": False, "error": str(exc)}), 500
+
+
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
     body             = request.get_json(silent=True) or {}

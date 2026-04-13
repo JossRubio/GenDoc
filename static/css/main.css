@@ -905,6 +905,20 @@ body {
 [data-theme="dark"] .gd-model-status--success { color: #4ade80; }
 [data-theme="dark"] .gd-model-status--warn    { color: #fbbf24; }
 
+/* ── API key validation status ───────────────────────────────────── */
+.gd-key-valid-status {
+  font-size: 0.76rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.gd-key-valid-status--valid   { color: #15803d; }
+.gd-key-valid-status--invalid { color: #ef4444; }
+.gd-key-valid-status--loading { color: var(--gd-muted); }
+.gd-key-valid-status--warn    { color: #ca8a04; }
+
+[data-theme="dark"] .gd-key-valid-status--valid { color: #4ade80; }
+
 /* ── Two-column model picker (Azure AI) ──────────────────────────── */
 .gd-model-cols {
   display: flex;

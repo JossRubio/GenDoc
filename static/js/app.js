@@ -44,6 +44,7 @@ const ui = {
   modelSelectorWrap:      document.getElementById("modelSelectorWrap"),
   modelSelect:            document.getElementById("modelSelect"),
   modelLoadStatus:        document.getElementById("modelLoadStatus"),
+  keyValidStatus:         document.getElementById("keyValidStatus"),
   azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
   azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
   azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
@@ -60,7 +61,7 @@ const TRANSLATIONS = {
     optional:          "Opcional",
     apiKeyPlaceholder: "API key del proveedor seleccionado…",
     showHide:          "Mostrar / ocultar",
-    loadModels:        "Modelos recomendados",
+    loadModels:        "Cargar API-key",
     selectModel:       "— Selecciona un modelo —",
     apiKeyHint:        "Si no configuras una API key, se usará la definida en el servidor.",
     repository:        "Repositorio",
@@ -135,6 +136,9 @@ const TRANSLATIONS = {
     azureTooltip:          "Los modelos mostrados solo funcionarán si el usuario con su api-key configuró el deploy de estos previamente en Azure AI Foundry.",
     azureManualTitle:      "Modelo",
     azureManualHint:       "(si no tienes en deploy las recomendaciones)",
+    keyValid:              "✓ API-key válida",
+    keyInvalid:            "✗ API-key inválida, revise la clave",
+    keyValidating:         "Verificando API-key…",
   },
   en: {
     subtitle:          "Automatic documentation generator for repositories",
@@ -144,7 +148,7 @@ const TRANSLATIONS = {
     optional:          "Optional",
     apiKeyPlaceholder: "API key for the selected provider…",
     showHide:          "Show / hide",
-    loadModels:        "Recommended models",
+    loadModels:        "Load API key",
     selectModel:       "— Select a model —",
     apiKeyHint:        "If you don't configure an API key, the server-defined one will be used.",
     repository:        "Repository",
@@ -219,6 +223,9 @@ const TRANSLATIONS = {
     azureTooltip:          "Displayed models will only work if the user with their api-key previously configured the deploy of these in Azure AI Foundry.",
     azureManualTitle:      "Model",
     azureManualHint:       "(if recommended models are not deployed)",
+    keyValid:              "✓ API key valid",
+    keyInvalid:            "✗ Invalid API key, please check the key",
+    keyValidating:         "Verifying API key…",
   },
 };
 
@@ -460,54 +467,73 @@ function setModelStatus(msg, type = "info") {
   ui.modelLoadStatus.className = `gd-model-status gd-model-status--${type}`;
 }
 
-async function loadModels() {
+function setKeyStatus(msg, type = "info") {
+  ui.keyValidStatus.textContent = msg;
+  ui.keyValidStatus.className = `gd-key-valid-status gd-key-valid-status--${type}`;
+}
+
+async function validateKey() {
   const apiKey = ui.apiKeyInput.value.trim();
   if (!apiKey) {
-    setModelStatus(t("logApiKeyFirst"), "warn");
-    ui.modelSelectorWrap.style.display = "block";
+    setKeyStatus(t("logApiKeyFirst"), "warn");
     return;
   }
 
   ui.btnLoadModels.disabled = true;
-  ui.modelSelectorWrap.style.display = "block";
-  ui.modelSelectorWrap.dataset.wasVisible = "true";
-  setModelStatus(t("loadingModels"), "loading");
-  ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
+  setKeyStatus(t("keyValidating"), "loading");
+
+  // Prepare dropdown for non-Azure providers
+  if (!isAzure()) {
+    ui.modelSelectorWrap.style.display = "block";
+    ui.modelSelectorWrap.dataset.wasVisible = "true";
+    setModelStatus(t("loadingModels"), "loading");
+    ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
+  }
 
   try {
-    const resp = await fetch("/api/models", {
+    const resp = await fetch("/api/validate_key", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ api_key: apiKey, provider: ui.providerSelect.value }),
     });
     const data = await resp.json();
 
-    if (data.error) {
-      setModelStatus(`${t("modelError")} ${data.error}`, "error");
-      ui.modelSelect.innerHTML = `<option value="">${t("noModels")}</option>`;
+    if (!data.valid) {
+      setKeyStatus(t("keyInvalid"), "invalid");
+      if (!isAzure()) {
+        setModelStatus(t("errorLoading"), "error");
+        ui.modelSelect.innerHTML = `<option value="">${t("noModels")}</option>`;
+      }
       return;
     }
 
-    const models = data.models || [];
-    ui.modelSelect.innerHTML = `<option value="">${t("serverDefaultModel")}</option>`;
-    models.forEach(m => {
-      const opt = document.createElement("option");
-      opt.value       = m.id;
-      opt.textContent = m.display_name || m.id;
-      ui.modelSelect.appendChild(opt);
-    });
+    setKeyStatus(t("keyValid"), "valid");
 
-    setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
-    log(`${t("logModelsLoaded")} ${models.length}`, "success");
+    // Populate model dropdown for non-Azure providers
+    if (!isAzure()) {
+      const models = data.models || [];
+      ui.modelSelect.innerHTML = `<option value="">${t("serverDefaultModel")}</option>`;
+      models.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value       = m.id;
+        opt.textContent = m.display_name || m.id;
+        ui.modelSelect.appendChild(opt);
+      });
+      setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
+      log(`${t("logModelsLoaded")} ${models.length}`, "success");
+    }
   } catch (err) {
-    setModelStatus(t("logConnectError"), "error");
-    ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;
+    setKeyStatus(t("logConnectError"), "error");
+    if (!isAzure()) {
+      setModelStatus(t("errorLoading"), "error");
+      ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;
+    }
   } finally {
     ui.btnLoadModels.disabled = false;
   }
 }
 
-ui.btnLoadModels.addEventListener("click", loadModels);
+ui.btnLoadModels.addEventListener("click", validateKey);
 
 // ── Browse handlers ──────────────────────────────────────────────────
 

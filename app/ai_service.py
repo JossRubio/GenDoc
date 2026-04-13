@@ -401,6 +401,37 @@ def _list_azure(api_key: str) -> list[dict]:
         raise RuntimeError(f"Error al listar modelos de Azure AI: {exc}") from exc
 
 
+def _validate_azure(api_key: str) -> None:
+    """
+    Validate an Azure AI Foundry key by making a lightweight HEAD/GET request.
+
+    For Foundry endpoints: GET {openai_base}/models
+      - 401 / 403 → key rejected → raises ValueError
+      - Anything else (including 404) → key accepted, endpoint just doesn't exist
+
+    For classic Azure OpenAI: delegates to _list_azure (SDK validates the key).
+    Raises ValueError on auth error, RuntimeError on connectivity error.
+    """
+    import httpx
+
+    openai_base, _, _, is_foundry = _get_azure_config()
+
+    if not is_foundry:
+        _list_azure(api_key)   # raises ValueError on auth error
+        return
+
+    url = openai_base.rstrip("/") + "/models"
+    try:
+        r = httpx.get(url, headers={"api-key": api_key}, timeout=10)
+        if r.status_code in (401, 403):
+            raise ValueError(
+                f"API key de Azure AI inválida o no autorizada ({r.status_code})."
+            )
+        # 404 or anything else → key was accepted by the server
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"No se pudo conectar con Azure AI: {exc}") from exc
+
+
 def _call_azure(prompt: str, api_key: str, model: str) -> str:
     try:
         import openai as _openai
@@ -434,6 +465,22 @@ def _call_azure(prompt: str, api_key: str, model: str) -> str:
 
 
 # ── Public API ────────────────────────────────────────────────────────
+
+def validate_key(api_key: str, provider: str | None = None) -> list[dict]:
+    """
+    Validate *api_key* for the given provider and return available models.
+
+    For Azure AI Foundry: performs a lightweight HTTP test and returns [].
+    For all other providers: validates by listing models and returns them.
+
+    Raises ValueError on auth error, RuntimeError on network/unexpected error.
+    """
+    prov = (provider or detect_provider(api_key)).lower()
+    if prov == "azure":
+        _validate_azure(api_key)
+        return []
+    return list_models(api_key, prov)
+
 
 def list_models(api_key: str, provider: str | None = None) -> list[dict]:
     """
