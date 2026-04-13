@@ -373,37 +373,12 @@ def _list_azure(api_key: str) -> list[dict]:
 
     openai_base, project_base, api_version, is_foundry = _get_azure_config()
 
-    if is_foundry and project_base:
-        # Use the Azure AI Foundry deployments management API
-        url = f"{project_base}deployments"
-        try:
-            resp = httpx.get(
-                url,
-                params={"api-version": api_version},
-                headers={"api-key": api_key, "Authorization": f"Bearer {api_key}"},
-                timeout=15,
-            )
-            if resp.status_code == 401:
-                raise ValueError("API key de Azure AI inválida o no autorizada (401).")
-            if resp.status_code == 403:
-                raise ValueError("Sin permisos para listar deployments en Azure AI (403).")
-            resp.raise_for_status()
-            data = resp.json()
-            deployments = data.get("value", [])
-            result = []
-            for d in deployments:
-                name = d.get("name") or d.get("id") or ""
-                if name:
-                    result.append({"id": name, "display_name": name})
-            return result
-        except ValueError:
-            raise
-        except httpx.HTTPStatusError as exc:
-            raise RuntimeError(
-                f"Error al listar deployments de Azure AI ({exc.response.status_code}): {exc}"
-            ) from exc
-        except Exception as exc:
-            raise RuntimeError(f"Error al listar deployments de Azure AI: {exc}") from exc
+    if is_foundry:
+        # Azure AI Foundry project-scoped endpoints (services.ai.azure.com) do not
+        # expose a deployment-listing REST API accessible with an API key alone.
+        # Management operations require Azure AD / ARM credentials.
+        # Return an empty list so the UI falls back to the manual deployment name input.
+        return []
 
     # Classic Azure OpenAI — use the OpenAI SDK models endpoint
     try:
