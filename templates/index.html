@@ -103,7 +103,12 @@
             <div class="gd-model-col">
               <div id="azureDropdownLabel" class="gd-model-col-label" style="display:none;">
                 <span data-i18n="azureRecommendedTitle">Modelos recomendados</span>
-                <span class="gd-model-col-warn">⚠️ <span data-i18n="azureRecommendedWarn">(deben estar deployados en Azure AI Foundry)</span></span>
+                <span class="gd-model-col-warn">⚠️ <span data-i18n="azureRecommendedWarn">(requiere deploy en Foundry)</span>
+                  <span class="gd-tooltip-wrap">
+                    <span class="gd-tooltip-icon">?</span>
+                    <span class="gd-tooltip-text" data-i18n="azureTooltip">Los modelos mostrados solo funcionarán si el usuario con su api-key configuró el deploy de estos previamente en Azure AI Foundry.</span>
+                  </span>
+                </span>
               </div>
               <div class="gd-model-row">
                 <select id="modelSelect" class="gd-model-select">
