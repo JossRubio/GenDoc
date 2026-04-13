@@ -843,7 +843,7 @@ async function generate() {
   try {
     const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
     const modelOverride    = isAzure()
-      ? (ui.azureDeploymentInput.value.trim() || null)
+      ? (ui.modelSelect.value.trim() || ui.azureDeploymentInput.value.trim() || null)
       : (ui.modelSelect.value.trim() || null);
     const providerOverride = apiKeyOverride ? ui.providerSelect.value : null;
 
