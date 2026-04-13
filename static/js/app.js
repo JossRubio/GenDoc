@@ -437,12 +437,10 @@ function syncAzureUI() {
   // Azure-only columns: dropdown label and manual input
   ui.azureDropdownLabel.style.display  = azure ? "" : "none";
   ui.azureDeploymentWrap.style.display = azure ? "" : "none";
-  // For Azure, show the model selector wrap immediately (no need to click first)
-  if (azure) {
-    ui.modelSelectorWrap.style.display = "";
-  } else if (ui.modelSelectorWrap.dataset.wasVisible !== "true") {
-    ui.modelSelectorWrap.style.display = "none";
-  }
+  // Hide model selector and clear key status whenever the provider changes
+  ui.modelSelectorWrap.style.display = "none";
+  ui.modelSelectorWrap.dataset.wasVisible = "";
+  setKeyStatus("", "");
 }
 
 ui.providerSelect.addEventListener("change", syncAzureUI);
@@ -482,10 +480,8 @@ async function validateKey() {
   ui.btnLoadModels.disabled = true;
   setKeyStatus(t("keyValidating"), "loading");
 
-  // Prepare dropdown for non-Azure providers
+  // Reset dropdown while loading
   if (!isAzure()) {
-    ui.modelSelectorWrap.style.display = "block";
-    ui.modelSelectorWrap.dataset.wasVisible = "true";
     setModelStatus(t("loadingModels"), "loading");
     ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
   }
@@ -508,6 +504,8 @@ async function validateKey() {
     }
 
     setKeyStatus(t("keyValid"), "valid");
+    ui.modelSelectorWrap.style.display = "";
+    ui.modelSelectorWrap.dataset.wasVisible = "true";
 
     // Populate model dropdown for non-Azure providers
     if (!isAzure()) {
