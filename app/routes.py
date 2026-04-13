@@ -99,6 +99,25 @@ def api_validate_key():
         return jsonify({"valid": False, "error": str(exc)}), 500
 
 
+@main.route("/api/test_model", methods=["POST"])
+def api_test_model():
+    body     = request.get_json(silent=True) or {}
+    api_key  = (body.get("api_key")  or "").strip()
+    provider = (body.get("provider") or "").strip()
+    model    = (body.get("model")    or "").strip()
+
+    if not api_key or not model:
+        return jsonify({"available": False, "error": "Falta API key o nombre de modelo."}), 400
+
+    try:
+        ai_service.test_model(api_key, provider, model)
+        return jsonify({"available": True})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"available": False, "error": str(exc)})
+    except Exception as exc:
+        return jsonify({"available": False, "error": str(exc)}), 500
+
+
 @main.route("/api/generate", methods=["POST"])
 def api_generate():
     body             = request.get_json(silent=True) or {}

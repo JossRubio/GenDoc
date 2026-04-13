@@ -475,6 +475,69 @@ def _call_azure(prompt: str, api_key: str, model: str) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────
 
+def test_model(api_key: str, provider: str, model: str) -> None:
+    """
+    Make a minimal 1-token call to verify the model is deployed and reachable.
+
+    Raises ValueError on auth/model errors, RuntimeError on network errors.
+    A successful return (no exception) means the model is available.
+    """
+    prov = (provider or "").lower()
+
+    if prov == "google":
+        from google import genai
+        from google.genai import errors as genai_errors
+        try:
+            client = genai.Client(api_key=api_key)
+            client.models.generate_content(model=model, contents="Hi")
+        except genai_errors.ClientError as exc:
+            raise ValueError(_google_friendly_error(exc)) from exc
+        except Exception as exc:
+            raise RuntimeError(str(exc)) from exc
+
+    elif prov == "anthropic":
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            raise RuntimeError("El paquete 'anthropic' no está instalado.")
+        try:
+            _anthropic.Anthropic(api_key=api_key).messages.create(
+                model=model, max_tokens=1,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+        except _anthropic.AuthenticationError as exc:
+            raise ValueError(str(exc)) from exc
+        except _anthropic.APIStatusError as exc:
+            raise ValueError(f"Error {exc.status_code}: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(str(exc)) from exc
+
+    elif prov in ("openai", "azure"):
+        try:
+            import openai as _openai
+        except ImportError:
+            raise RuntimeError("El paquete 'openai' no está instalado.")
+        try:
+            client = _azure_client(api_key) if prov == "azure" else _openai.OpenAI(api_key=api_key)
+            client.chat.completions.create(
+                model=model, max_tokens=1,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+        except _openai.AuthenticationError as exc:
+            raise ValueError(str(exc)) from exc
+        except _openai.NotFoundError as exc:
+            raise ValueError(
+                f"Modelo '{model}' no encontrado. Verifica el nombre del deployment."
+            ) from exc
+        except _openai.APIStatusError as exc:
+            raise ValueError(f"Error {exc.status_code}: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(str(exc)) from exc
+
+    else:
+        raise ValueError(f"Proveedor desconocido: {provider}")
+
+
 def validate_key(api_key: str, provider: str | None = None) -> list[dict]:
     """
     Validate *api_key* for the given provider and return available models.

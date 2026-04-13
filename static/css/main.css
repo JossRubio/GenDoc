@@ -1021,6 +1021,52 @@ body {
   border-top-color: #1f2937;
 }
 
+/* ── Test model button ───────────────────────────────────────────── */
+.gd-model-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.btn-test-model {
+  flex-shrink: 0;
+  border: 1px solid var(--gd-border);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: var(--gd-btn-browse-bg);
+  color: var(--gd-text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-test-model:hover:not(:disabled) {
+  background: var(--gd-btn-browse-hover);
+  border-color: var(--gd-btn-browse-border-hover);
+}
+
+.btn-test-model:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gd-model-test-status {
+  font-size: 0.76rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.gd-model-test-status--available { color: #15803d; }
+.gd-model-test-status--unavailable { color: #ef4444; }
+.gd-model-test-status--loading { color: var(--gd-muted); }
+.gd-model-test-status--warn { color: #ca8a04; }
+
+[data-theme="dark"] .gd-model-test-status--available { color: #4ade80; }
+
 /* Responsive tweaks */
 @media (max-width: 540px) {
   .gd-card {

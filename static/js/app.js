@@ -45,6 +45,8 @@ const ui = {
   modelSelect:            document.getElementById("modelSelect"),
   modelLoadStatus:        document.getElementById("modelLoadStatus"),
   keyValidStatus:         document.getElementById("keyValidStatus"),
+  btnTestModel:           document.getElementById("btnTestModel"),
+  modelTestStatus:        document.getElementById("modelTestStatus"),
   azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
   azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
   azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
@@ -139,6 +141,11 @@ const TRANSLATIONS = {
     keyValid:              "✓ API-key válida",
     keyInvalid:            "✗ API-key inválida, revise la clave",
     keyValidating:         "Verificando API-key…",
+    testModel:             "Probar modelo",
+    testModelTesting:      "Probando modelo…",
+    testModelOk:           "✓ Modelo disponible",
+    testModelFail:         "✗ Modelo no disponible, revise la habilitación, versión o si se le hizo deploy",
+    testModelSelectFirst:  "Selecciona o ingresa un modelo primero.",
   },
   en: {
     subtitle:          "Automatic documentation generator for repositories",
@@ -226,6 +233,11 @@ const TRANSLATIONS = {
     keyValid:              "✓ API key valid",
     keyInvalid:            "✗ Invalid API key, please check the key",
     keyValidating:         "Verifying API key…",
+    testModel:             "Test model",
+    testModelTesting:      "Testing model…",
+    testModelOk:           "✓ Model available",
+    testModelFail:         "✗ Model unavailable, check the deployment, version or configuration",
+    testModelSelectFirst:  "Select or enter a model first.",
   },
 };
 
@@ -469,6 +481,54 @@ function setKeyStatus(msg, type = "info") {
   ui.keyValidStatus.textContent = msg;
   ui.keyValidStatus.className = `gd-key-valid-status gd-key-valid-status--${type}`;
 }
+
+function setModelTestStatus(msg, type = "info") {
+  ui.modelTestStatus.textContent = msg;
+  ui.modelTestStatus.className = `gd-model-test-status gd-model-test-status--${type}`;
+}
+
+async function testModel() {
+  const apiKey = ui.apiKeyInput.value.trim();
+  const model  = isAzure()
+    ? (ui.modelSelect.value.trim() || ui.azureDeploymentInput.value.trim())
+    : ui.modelSelect.value.trim();
+
+  if (!apiKey) {
+    setModelTestStatus(t("logApiKeyFirst"), "warn");
+    return;
+  }
+  if (!model) {
+    setModelTestStatus(t("testModelSelectFirst"), "warn");
+    return;
+  }
+
+  ui.btnTestModel.disabled = true;
+  setModelTestStatus(t("testModelTesting"), "loading");
+
+  try {
+    const resp = await fetch("/api/test_model", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ api_key: apiKey, provider: ui.providerSelect.value, model }),
+    });
+    const data = await resp.json();
+    if (data.available) {
+      setModelTestStatus(t("testModelOk"), "available");
+    } else {
+      setModelTestStatus(t("testModelFail"), "unavailable");
+    }
+  } catch (err) {
+    setModelTestStatus(t("logConnectError"), "error");
+  } finally {
+    ui.btnTestModel.disabled = false;
+  }
+}
+
+ui.btnTestModel.addEventListener("click", testModel);
+
+// Clear test status when model selection changes
+ui.modelSelect.addEventListener("change", () => setModelTestStatus("", ""));
+ui.azureDeploymentInput.addEventListener("input",  () => setModelTestStatus("", ""));
 
 async function validateKey() {
   const apiKey = ui.apiKeyInput.value.trim();
