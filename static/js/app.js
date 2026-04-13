@@ -507,16 +507,16 @@ async function validateKey() {
     ui.modelSelectorWrap.style.display = "";
     ui.modelSelectorWrap.dataset.wasVisible = "true";
 
-    // Populate model dropdown for non-Azure providers
+    // Populate model dropdown for all providers
+    const models = data.models || [];
+    ui.modelSelect.innerHTML = `<option value="">${t("selectModel")}</option>`;
+    models.forEach(m => {
+      const opt = document.createElement("option");
+      opt.value       = m.id;
+      opt.textContent = m.display_name || m.id;
+      ui.modelSelect.appendChild(opt);
+    });
     if (!isAzure()) {
-      const models = data.models || [];
-      ui.modelSelect.innerHTML = `<option value="">${t("serverDefaultModel")}</option>`;
-      models.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value       = m.id;
-        opt.textContent = m.display_name || m.id;
-        ui.modelSelect.appendChild(opt);
-      });
       setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
       log(`${t("logModelsLoaded")} ${models.length}`, "success");
     }

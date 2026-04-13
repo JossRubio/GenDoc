@@ -32,6 +32,15 @@ _OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
 # Azure AI default API version (used when AZURE_AI_API_VERSION is not set)
 _AZURE_DEFAULT_API_VERSION = "2025-01-01-preview"
 
+# Curated list of Azure AI Foundry models shown as "Recommended" in the UI.
+# Deployment names in Foundry typically match the model ID below, but users
+# can override with the manual input if their deployment has a custom name.
+_AZURE_RECOMMENDED_MODELS: list[dict] = [
+    {"id": "gpt-4.1",        "display_name": "GPT-4.1"},
+    {"id": "gpt-5.4-mini",   "display_name": "GPT-5.4 mini"},
+    {"id": "DeepSeek-V3.2",  "display_name": "DeepSeek-V3.2"},
+]
+
 # Google fallback chain (tried in order when primary returns a retryable error)
 _GOOGLE_FALLBACK_MODELS = [
     "gemini-3-flash-preview",
@@ -478,7 +487,7 @@ def validate_key(api_key: str, provider: str | None = None) -> list[dict]:
     prov = (provider or detect_provider(api_key)).lower()
     if prov == "azure":
         _validate_azure(api_key)
-        return []
+        return _AZURE_RECOMMENDED_MODELS
     return list_models(api_key, prov)
 
 
