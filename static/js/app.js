@@ -103,6 +103,7 @@ const TRANSLATIONS = {
     progress:          "Progreso",
     downloadBtn:       "Descargar documentación",
     runningOn:         "Ejecutando en",
+    allRightsReserved: "Todos los derechos reservados.",
     // idle modal
     idleTitle:         "El servidor se cerrará automáticamente",
     idleBody:          "No se detectó actividad. GenDoc se apagará en",
@@ -195,6 +196,7 @@ const TRANSLATIONS = {
     progress:          "Progress",
     downloadBtn:       "Download documentation",
     runningOn:         "Running on",
+    allRightsReserved: "All rights reserved.",
     // idle modal
     idleTitle:         "The server will shut down automatically",
     idleBody:          "No activity detected. GenDoc will close in",
