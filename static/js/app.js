@@ -452,7 +452,7 @@ function syncAzureUI() {
   ui.azureDropdownLabel.style.display  = azure ? "" : "none";
   ui.azureDeploymentWrap.style.display = azure ? "" : "none";
   // Hide model selector and clear key status whenever the provider changes
-  ui.modelSelectorWrap.style.display = "none";
+  closePanel(ui.modelSelectorWrap);
   ui.modelSelectorWrap.dataset.wasVisible = "";
   setKeyStatus("", "");
 }
@@ -473,6 +473,19 @@ ui.btnToggleApiKey.addEventListener("click", () => {
   ui.apiKeyInput.type = isHidden ? "text" : "password";
   ui.apiKeyEyeIcon.textContent = isHidden ? "🙈" : "👁";
 });
+
+// ── Panel animation helpers ───────────────────────────────────────────
+
+function openPanel(el) {
+  // Remove and re-add to restart child transitions on repeated opens
+  el.classList.remove("is-open");
+  void el.offsetWidth;
+  el.classList.add("is-open");
+}
+
+function closePanel(el) {
+  el.classList.remove("is-open");
+}
 
 function setModelStatus(msg, type = "info") {
   ui.modelLoadStatus.textContent = msg;
@@ -566,7 +579,7 @@ async function validateKey() {
     }
 
     setKeyStatus(t("keyValid"), "valid");
-    ui.modelSelectorWrap.style.display = "";
+    openPanel(ui.modelSelectorWrap);
     ui.modelSelectorWrap.dataset.wasVisible = "true";
 
     // Populate model dropdown for all providers
@@ -648,14 +661,14 @@ async function browseFile() {
 
 function clearSectionsPanel() {
   ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
-  ui.sectionsPanelWrap.style.display = "none";
+  closePanel(ui.sectionsPanelWrap);
 }
 
 function renderSectionsPanel(sections) {
   ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
 
   if (!sections || sections.length === 0) {
-    ui.sectionsPanelWrap.style.display = "none";
+    closePanel(ui.sectionsPanelWrap);
     return;
   }
 
@@ -736,10 +749,12 @@ function renderSectionsPanel(sections) {
     row.appendChild(editCell);
     row.appendChild(tableCell);
     row.appendChild(diagCell);
+    // Stagger each row: panel children animate in ~0.25s, then rows cascade
+    row.style.animationDelay = `${0.28 + idx * 0.045}s`;
     ui.sectionsList.appendChild(row);
   });
 
-  ui.sectionsPanelWrap.style.display = "block";
+  openPanel(ui.sectionsPanelWrap);
 }
 
 /**

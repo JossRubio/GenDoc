@@ -1021,6 +1021,52 @@ body {
   border-top-color: #1f2937;
 }
 
+/* ── Expandable panels ───────────────────────────────────────────── */
+
+/* Container: grows smoothly via max-height */
+.gd-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.45s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+.gd-panel.is-open {
+  max-height: 1200px;
+}
+
+/* sectionsPanelWrap: control its margin so collapsed state leaves no gap */
+#sectionsPanelWrap.gd-panel {
+  margin-bottom: 0;
+  transition: max-height 0.45s cubic-bezier(0.0, 0.0, 0.2, 1),
+              margin-bottom 0.3s ease 0.1s;
+}
+#sectionsPanelWrap.gd-panel.is-open {
+  margin-bottom: 1.5rem;
+}
+
+/* Direct children: fade + slide up with stagger */
+.gd-panel > * {
+  opacity: 0;
+  transform: translateY(7px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.gd-panel.is-open > *:nth-child(1) { opacity: 1; transform: none; transition-delay: 0.09s; }
+.gd-panel.is-open > *:nth-child(2) { opacity: 1; transform: none; transition-delay: 0.17s; }
+.gd-panel.is-open > *:nth-child(3) { opacity: 1; transform: none; transition-delay: 0.25s; }
+.gd-panel.is-open > *:nth-child(4) { opacity: 1; transform: none; transition-delay: 0.33s; }
+
+/* Section rows: slide in from the left, staggered via inline animation-delay */
+@keyframes gd-item-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.gd-section-item {
+  opacity: 0;
+  animation: gd-item-in 0.22s ease forwards;
+}
+
 /* ── Test model button ───────────────────────────────────────────── */
 .gd-model-test-row {
   display: flex;
