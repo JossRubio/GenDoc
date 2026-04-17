@@ -189,9 +189,9 @@ class BaseGenerator:
             if extra else ""
         )
 
-        # Build the locked-sections block only when applicable
+        # Build the locked-sections block whenever locked sections exist
         locked_block = ""
-        if template_content and locked_sections:
+        if locked_sections:
             locked_list = "\n".join(f"  - {s}" for s in locked_sections)
             if lang == "en":
                 locked_block = (

@@ -287,6 +287,7 @@ def _read_template(template_path: str) -> tuple[str | None, str | None]:
     """
     Read the template file and return (content, error_message).
     content is None when the file cannot be used; error_message explains why.
+    .docx files are converted to a Markdown-like text representation.
     """
     p = Path(template_path)
 
@@ -298,10 +299,37 @@ def _read_template(template_path: str) -> tuple[str | None, str | None]:
 
     ext = p.suffix.lower()
     if ext == ".docx":
-        return None, (
-            "Las plantillas .docx no se pueden leer como texto plano todavía. "
-            "Se usará la estructura predefinida."
-        )
+        try:
+            from docx import Document as _Document
+            wdoc = _Document(str(p))
+            lines: list[str] = []
+            for para in wdoc.paragraphs:
+                style_name = (para.style.name or "").lower()
+                text = para.text.strip()
+                if not text:
+                    if lines and lines[-1] != "":
+                        lines.append("")
+                    continue
+                if style_name.startswith("heading 1"):
+                    lines.append(f"# {text}")
+                elif style_name.startswith("heading 2"):
+                    lines.append(f"## {text}")
+                elif style_name.startswith("heading 3"):
+                    lines.append(f"### {text}")
+                elif style_name.startswith("heading 4"):
+                    lines.append(f"#### {text}")
+                elif style_name.startswith("heading"):
+                    lines.append(f"##### {text}")
+                else:
+                    lines.append(text)
+            content = "\n".join(lines).strip()
+            if not content:
+                return None, "El archivo .docx no contiene texto legible."
+            return content, None
+        except ImportError:
+            return None, "python-docx no está instalado. Ejecuta: pip install python-docx"
+        except Exception as exc:
+            return None, f"No se pudo leer el archivo .docx: {exc}"
 
     try:
         content = p.read_text(encoding="utf-8", errors="strict")
@@ -321,6 +349,105 @@ def _read_template(template_path: str) -> tuple[str | None, str | None]:
             f"No se pudo leer el archivo de plantilla ({exc}). "
             "Se usará la estructura predefinida."
         )
+
+
+def _extract_section_contents(
+    template_path: str, template_content: str | None = None
+) -> dict[str, str]:
+    """
+    Return ``{section_heading: body_text}`` for every section in the template.
+
+    Used by ``_inject_locked_sections`` to restore locked sections to their
+    original text after the LLM has generated the document.
+
+    Supports .docx (via python-docx) and .md/.txt (via regex on the content
+    already read by ``_read_template``).
+    """
+    ext = Path(template_path).suffix.lower()
+
+    if ext == ".docx":
+        try:
+            from docx import Document as _Document
+            wdoc = _Document(template_path)
+            result: dict[str, list[str]] = {}
+            current: str | None = None
+            for para in wdoc.paragraphs:
+                style = (para.style.name or "").lower()
+                text = para.text.strip()
+                if not text:
+                    continue
+                if style.startswith("heading"):
+                    current = text
+                    result.setdefault(current, [])
+                elif current is not None:
+                    result[current].append(text)
+            return {k: "\n\n".join(v) for k, v in result.items() if v}
+        except Exception:
+            return {}
+
+    # .md / .txt — parse from the already-read template_content
+    if template_content and ext in (".md", ".txt"):
+        import re
+        result_md: dict[str, list[str]] = {}
+        current_md: str | None = None
+        for line in template_content.splitlines():
+            m = re.match(r'^#{1,4}\s+(.+)', line)
+            if m:
+                current_md = m.group(1).strip()
+                result_md.setdefault(current_md, [])
+            elif current_md and line.strip():
+                result_md[current_md].append(line.strip())
+        return {k: "\n\n".join(v) for k, v in result_md.items() if v}
+
+    return {}
+
+
+def _inject_locked_sections(
+    markdown: str,
+    locked_sections: list[str],
+    section_contents: dict[str, str],
+) -> str:
+    """
+    In the LLM-generated *markdown*, replace the body of every locked section
+    with the original text from the template.
+
+    Only sections present in both *locked_sections* and *section_contents* are
+    replaced; all other content (headings, unlocked sections) is left intact.
+    """
+    if not locked_sections or not section_contents:
+        return markdown
+
+    import re
+
+    result: list[str] = []
+    lines = markdown.split("\n")
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r'^(#{1,4})\s+(.+)', line)
+        if m:
+            level = len(m.group(1))
+            title = m.group(2).strip()
+            if title in locked_sections and title in section_contents:
+                result.append(line)          # keep the heading
+                i += 1
+                # Skip LLM body until the next heading of same/higher level
+                while i < len(lines):
+                    nm = re.match(r'^(#{1,4})\s+', lines[i])
+                    if nm and len(nm.group(1)) <= level:
+                        break
+                    i += 1
+                # Inject original content
+                result.append("")
+                result.append(section_contents[title])
+                result.append("")
+                continue
+
+        result.append(line)
+        i += 1
+
+    return "\n".join(result)
 
 
 # ── Main streaming generator ──────────────────────────────────────────
@@ -485,6 +612,21 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     if not markdown or not markdown.strip():
         yield _error(_m(lang, "empty_response"))
         return
+
+    # ── 4b. Enforce locked sections — restore original content ───────
+    # Do this programmatically so the result is guaranteed regardless of
+    # how faithfully the LLM followed the instructions.
+    if template_path and locked_sections:
+        _sec_contents = _extract_section_contents(template_path, template_content)
+        if _sec_contents:
+            markdown = _inject_locked_sections(markdown, locked_sections, _sec_contents)
+            _restored = [s for s in locked_sections if s in _sec_contents]
+            if _restored:
+                yield _log(
+                    f"{'Sections preserved from template' if lang == 'en' else 'Secciones preservadas de la plantilla'}: "
+                    + ", ".join(_restored),
+                    level="success",
+                )
 
     yield _progress(90)
 
