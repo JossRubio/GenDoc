@@ -492,18 +492,33 @@ def apply_section_edits(
                     end_body_idx = j
                     break
 
-        # Delete existing content between heading and next heading
+        # Identify the body-level sectPr so we never accidentally delete it.
+        # It holds page margins and must always remain the last child of <w:body>.
+        body_sect_pr = body.find(qn("w:sectPr"))
+
+        # Delete existing content between heading and next heading,
+        # but never touch the body sectPr.
         for child in body_children[h_body_idx + 1 : end_body_idx]:
+            if child is body_sect_pr:
+                continue
             body.remove(child)
 
         # Build replacement elements from markdown in a scratch document
         scratch   = Document()
         new_els   = _build_elements_from_markdown(scratch, content)
 
-        # Insert after heading
+        # Insert after heading (before sectPr if it's still there)
         insert_at = h_body_idx + 1
         for offset, el in enumerate(new_els):
             body.insert(insert_at + offset, copy.deepcopy(el))
+
+    # Re-anchor the body sectPr as the very last child of <w:body>.
+    # OOXML requires this position; inserting paragraphs above may have
+    # displaced it, which causes Word to ignore the stored margin settings.
+    body_sect_pr = body.find(qn("w:sectPr"))
+    if body_sect_pr is not None:
+        body.remove(body_sect_pr)
+        body.append(body_sect_pr)
 
     doc.save(str(dest))
     return dest
