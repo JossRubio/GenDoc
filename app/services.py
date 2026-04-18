@@ -673,7 +673,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         from . import md_to_pdf
         _converter = lambda: md_to_pdf.convert(markdown, output_path, **kwargs)  # noqa: E731
     else:
-        _docx_kwargs = {**kwargs, "output_lang": output_lang}
+        _docx_kwargs = {**kwargs, "output_lang": output_lang, "title": repo_name}
         _converter = lambda: md_to_docx.convert(markdown, output_path, **_docx_kwargs)  # noqa: E731
 
     try:

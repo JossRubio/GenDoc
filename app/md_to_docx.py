@@ -827,6 +827,7 @@ def convert(
     markdown: str,
     output_path: str | Path,
     *,
+    title:           str | None = None,
     doc_type:        str = "technical",
     primary_color:   str = _DEFAULT_PRIMARY,
     secondary_color: str = _DEFAULT_SECONDARY,
@@ -869,17 +870,20 @@ def convert(
     lines = markdown.splitlines()
     n     = len(lines)
 
-    # ── Find first H1 → cover title ──────────────────────────────────
-    title          = None
+    # ── Find / set cover title ───────────────────────────────────────
+    # When an explicit title is provided (e.g. repo name from services.py),
+    # use it directly and do NOT consume the first H1 from the body so that
+    # headings like "# Clonar Repositorio" remain as regular body sections.
     title_line_idx = -1
-    for idx, line in enumerate(lines):
-        m = re.match(r"^#\s+(.*)", line)
-        if m:
-            title          = m.group(1).strip()
-            title_line_idx = idx
-            break
     if not title:
-        title = out.stem.replace("_", " ").title()
+        for idx, line in enumerate(lines):
+            m = re.match(r"^#\s+(.*)", line)
+            if m:
+                title          = m.group(1).strip()
+                title_line_idx = idx
+                break
+        if not title:
+            title = out.stem.replace("_", " ").title()
 
     # ── Pre-scan 1: headings (for TOC links + body bookmarks) ────────
     heading_map: dict[int, tuple[str, int]] = {}
