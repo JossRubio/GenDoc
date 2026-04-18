@@ -13,7 +13,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
-from . import md_to_docx
+from . import md_to_docx, template_editor
 from .generators import DEFAULT_DOC_TYPE, get_generator
 from .repo_reader import scan
 
@@ -59,6 +59,13 @@ _MSG = {
         "no_repo":           "No se especificó ningún repositorio.",
         "output_lang_es":    "Idioma de salida: Español",
         "output_lang_en":    "Idioma de salida: Inglés",
+        "surgical_mode":     "Modo edición quirúrgica (.docx)",
+        "surgical_sections": "Secciones a editar",
+        "surgical_none":     "No hay secciones para editar. La plantilla se devolverá sin cambios.",
+        "surgical_all_locked": "Todas las secciones están bloqueadas. La plantilla se devolverá sin cambios.",
+        "surgical_generating": "Generando contenido para las secciones seleccionadas...",
+        "surgical_applying":   "Aplicando ediciones en la plantilla...",
+        "surgical_done":       "Plantilla editada exitosamente",
     },
     "en": {
         "doc_type":          "Document type",
@@ -98,6 +105,13 @@ _MSG = {
         "no_repo":           "No repository was specified.",
         "output_lang_es":    "Output language: Spanish",
         "output_lang_en":    "Output language: English",
+        "surgical_mode":     "Surgical editing mode (.docx)",
+        "surgical_sections": "Sections to edit",
+        "surgical_none":     "No sections to edit. The template will be returned unchanged.",
+        "surgical_all_locked": "All sections are locked. The template will be returned unchanged.",
+        "surgical_generating": "Generating content for selected sections...",
+        "surgical_applying":   "Applying edits to the template...",
+        "surgical_done":       "Template edited successfully",
     },
 }
 
@@ -450,6 +464,184 @@ def _inject_locked_sections(
     return "\n".join(result)
 
 
+# ── Surgical .docx editing flow ──────────────────────────────────────
+
+def _surgical_flow(
+    template_path: str,
+    repo_scan,
+    repo_name: str,
+    generator,
+    locked_sections: list[str] | None,
+    section_enrichments: dict | None,
+    api_key_override: str | None,
+    model_override: str | None,
+    provider_override: str | None,
+    lang: str,
+    output_lang: str,
+    doc_type: str,
+    output_dir: str,
+):
+    """
+    Surgical editing mode: edits only the selected sections of a .docx
+    template in-place instead of generating a fresh document.
+
+    Yields SSE event dicts the same way as the regular flow.
+    """
+    import concurrent.futures as _cf
+
+    yield _log(_m(lang, "surgical_mode"), level="info")
+
+    # 1. Find all section positions in the template
+    try:
+        all_positions = template_editor.find_section_positions(template_path)
+    except Exception as exc:
+        yield _error(f"No se pudieron leer las secciones del template: {exc}")
+        return
+
+    all_titles = [p["title"] for p in all_positions]
+
+    # 2. Determine sections to edit (everything not locked)
+    locked_set      = set(locked_sections or [])
+    sections_to_edit = [t for t in all_titles if t not in locked_set]
+
+    if not all_titles:
+        yield _log(_m(lang, "surgical_none"), level="warn")
+    elif not sections_to_edit:
+        yield _log(_m(lang, "surgical_all_locked"), level="warn")
+    else:
+        yield _log(
+            f"{_m(lang, 'surgical_sections')}: "
+            + ", ".join(sections_to_edit)
+        )
+
+    yield _progress(45)
+
+    section_responses: dict[str, str] = {}
+
+    if sections_to_edit:
+        # 3. Build combined LLM prompt
+        try:
+            prompt = template_editor.build_combined_edit_prompt(
+                repo_scan,
+                sections_to_edit,
+                all_titles,
+                section_enrichments,
+                generator,
+                output_lang=output_lang,
+            )
+        except Exception as exc:
+            yield _error(f"No se pudo construir el prompt: {exc}")
+            return
+
+        _olang_key = "output_lang_en" if output_lang == "en" else "output_lang_es"
+        yield _log(_m(lang, _olang_key))
+        yield _log(_m(lang, "surgical_generating"))
+        yield _progress(55)
+
+        # 4. Call LLM
+        from . import ai_service
+
+        _LLM_TIMEOUT = 300
+
+        def _do_llm():
+            return ai_service.call_llm(
+                prompt,
+                api_key_override=api_key_override,
+                model_override=model_override,
+                provider_override=provider_override,
+            )
+
+        try:
+            with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                _future = _pool.submit(_do_llm)
+                try:
+                    llm_output = _future.result(timeout=_LLM_TIMEOUT)
+                except _cf.TimeoutError:
+                    _future.cancel()
+                    yield _error(
+                        f"{'The LLM did not respond within' if lang == 'en' else 'El modelo no respondió en'} "
+                        f"{_LLM_TIMEOUT}s."
+                    )
+                    return
+        except ValueError as exc:
+            yield _error(f"{_m(lang, 'config_error')}: {exc}")
+            return
+        except RuntimeError as exc:
+            yield _error(f"{_m(lang, 'gen_error')}: {exc}")
+            return
+        except Exception as exc:
+            yield _error(f"{_m(lang, 'gen_unexpected')}: {exc}")
+            return
+
+        if not llm_output or not llm_output.strip():
+            yield _error(_m(lang, "empty_response"))
+            return
+
+        yield _progress(80)
+
+        # 5. Parse per-section responses
+        section_responses = template_editor.parse_section_responses(llm_output)
+
+        # Log which sections were resolved
+        resolved   = [s for s in sections_to_edit if s in section_responses]
+        unresolved = [s for s in sections_to_edit if s not in section_responses]
+        if resolved:
+            yield _log(
+                f"{'Sections generated' if lang == 'en' else 'Secciones generadas'}: "
+                + ", ".join(resolved),
+                level="success",
+            )
+        if unresolved:
+            yield _log(
+                f"{'Sections not found in LLM output' if lang == 'en' else 'Secciones no encontradas en la respuesta'}: "
+                + ", ".join(unresolved),
+                level="warn",
+            )
+
+    yield _progress(88)
+
+    # 6. Determine output path
+    try:
+        output_path = str(generator.output_path(repo_name, output_dir, fmt="docx"))
+    except Exception as exc:
+        yield _error(f"{_m(lang, 'output_path_error')}: {exc}")
+        return
+
+    yield _log(_m(lang, "surgical_applying"), level="success")
+
+    # 7. Apply surgical edits
+    _EDIT_TIMEOUT = 60
+
+    def _do_edit():
+        return template_editor.apply_section_edits(
+            template_path,
+            output_path,
+            section_responses,
+            all_positions,
+        )
+
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+            _future = _pool.submit(_do_edit)
+            try:
+                final_path = _future.result(timeout=_EDIT_TIMEOUT)
+            except _cf.TimeoutError:
+                _future.cancel()
+                yield _error(_m(lang, "timeout_error").format(t=_EDIT_TIMEOUT))
+                return
+    except RuntimeError as exc:
+        yield _error(f"{_m(lang, 'doc_error')}: {exc}")
+        return
+    except Exception as exc:
+        yield _error(f"{_m(lang, 'export_error')}: {exc}")
+        return
+
+    filename = Path(output_path).name
+    yield _log(f"{_m(lang, 'surgical_done')}: {filename}", level="success")
+    yield _progress(100)
+    yield _ready(output_path=str(final_path), filename=filename)
+
+
 # ── Main streaming generator ──────────────────────────────────────────
 
 def generate_documentation_stream(
@@ -556,11 +748,27 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
 
     yield _progress(30)
 
-    # ── 4. Generate Markdown via LLM ─────────────────────────────────
+    # ── 3b. Resolve repo name + output dir (needed by both paths) ────
     try:
         repo_name = Path(repo_path).resolve().name
     except OSError:
         repo_name = Path(repo_path).name
+
+    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
+
+    # ── Surgical .docx editing mode ──────────────────────────────────
+    # When the template is a .docx we edit sections in-place instead of
+    # regenerating the whole document via markdown conversion.
+    if template_path and Path(template_path).suffix.lower() == ".docx":
+        yield from _surgical_flow(
+            template_path, repo_scan, repo_name, generator,
+            locked_sections, section_enrichments,
+            api_key_override, model_override, provider_override,
+            lang, output_lang, doc_type, output_dir,
+        )
+        return
+
+    # ── 4. Generate Markdown via LLM ─────────────────────────────────
 
     active_provider = (provider_override or "").strip() or "google"
     active_model    = (model_override or "").strip() or os.getenv("LLM_MODEL", "gemini-3-flash-preview").strip()
