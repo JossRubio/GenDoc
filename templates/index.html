@@ -204,14 +204,14 @@
       <!-- ── Secciones de la plantilla ──────────────────────── -->
       <div id="sectionsPanelWrap" class="gd-panel">
         <div class="gd-label d-flex align-items-center justify-content-between">
-          <span data-i18n="sectionsDetected">Secciones detectadas en la plantilla</span>
+          <span id="sectionsPanelTitle" data-i18n="sectionsDetected">Secciones detectadas en la plantilla</span>
           <div class="gd-sections-toggle-row">
             <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn" data-i18n="selectAll">Seleccionar todo</button>
             <span class="gd-sections-sep">·</span>
             <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn" data-i18n="deselectAll">Deseleccionar todo</button>
           </div>
         </div>
-        <div class="gd-sections-hint" data-i18n-html="sectionsHint">
+        <div id="sectionsPanelHint" class="gd-sections-hint" data-i18n-html="sectionsHint">
           Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM
           (las no marcadas se copian exactamente desde la plantilla).
           Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos
@@ -220,7 +220,7 @@
         <div id="sectionsList" class="gd-sections-panel">
           <!-- Column headers — sticky inside the scrollable panel -->
           <div class="gd-sections-cols-header">
-            <span class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
+            <span id="sectionsPanelColName" class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
             <span class="gd-sections-col-label" data-i18n="colText">Texto</span>
             <span class="gd-sections-col-label" data-i18n="colTables">Tablas</span>
             <span class="gd-sections-col-label" data-i18n="colDiagrams">Diagramas</span>

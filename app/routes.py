@@ -9,6 +9,7 @@ from flask import (
 )
 
 from . import ai_service
+from .generators import get_generator
 from .services import browse_folder, browse_file, generate_documentation_stream, extract_template_sections
 
 main = Blueprint("main", __name__)
@@ -60,6 +61,21 @@ def api_template_sections():
     if error:
         return jsonify({"sections": [], "error": error}), 200  # non-fatal; caller shows warning
 
+    return jsonify({"sections": sections})
+
+
+@main.route("/api/default_sections", methods=["POST"])
+def api_default_sections():
+    body     = request.get_json(silent=True) or {}
+    doc_type = (body.get("doc_type") or "technical").strip()
+    lang     = (body.get("lang")     or "es").strip()
+    if lang not in ("es", "en"):
+        lang = "es"
+    try:
+        gen = get_generator(doc_type)
+    except ValueError:
+        return jsonify({"sections": []}), 400
+    sections = getattr(gen, f"SECTIONS_{lang.upper()}", None) or gen.SECTIONS
     return jsonify({"sections": sections})
 
 

@@ -50,6 +50,10 @@ const ui = {
   azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
   azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
   azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
+  // Sections panel dynamic labels
+  sectionsPanelTitle:     document.getElementById("sectionsPanelTitle"),
+  sectionsPanelHint:      document.getElementById("sectionsPanelHint"),
+  sectionsPanelColName:   document.getElementById("sectionsPanelColName"),
 };
 
 // ── i18n ─────────────────────────────────────────────────────────────
@@ -73,10 +77,13 @@ const TRANSLATIONS = {
     templatePlaceholder: "Archivo de referencia (.txt, .md, .docx…)",
     templateHint:      "Proporciona un documento de ejemplo para guiar el estilo de la documentación generada.",
     sectionsDetected:  "Secciones detectadas en la plantilla",
+    sectionsRecommended: "Secciones recomendadas",
     selectAll:         "Seleccionar todo",
     deselectAll:       "Deseleccionar todo",
     sectionsHint:      "Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM (las no marcadas se copian exactamente desde la plantilla). Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos elementos en cada sección.",
+    sectionsHintDefault: "Las secciones mostradas son las predeterminadas para este tipo de documento. Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para incluir esos elementos en cada sección generada.",
     colSection:        "Sección detectada",
+    colSectionDefault: "Sección recomendada",
     colText:           "Texto",
     colTables:         "Tablas",
     colDiagrams:       "Diagramas",
@@ -166,10 +173,13 @@ const TRANSLATIONS = {
     templatePlaceholder: "Reference file (.txt, .md, .docx…)",
     templateHint:      "Provide a sample document to guide the style of the generated documentation.",
     sectionsDetected:  "Sections detected in the template",
+    sectionsRecommended: "Recommended sections",
     selectAll:         "Select all",
     deselectAll:       "Deselect all",
     sectionsHint:      "Use the <strong>Text</strong> column to indicate which sections the LLM should edit (unmarked ones are copied exactly from the template). Use <strong>Tables</strong> and <strong>Diagrams</strong> to request those elements per section.",
+    sectionsHintDefault: "The sections shown are the defaults for this document type. Use <strong>Tables</strong> and <strong>Diagrams</strong> to include those elements in each generated section.",
     colSection:        "Detected section",
+    colSectionDefault: "Recommended section",
     colText:           "Text",
     colTables:         "Tables",
     colDiagrams:       "Diagrams",
@@ -304,6 +314,9 @@ function applyLang(lang) {
   document.getElementById("statusText").textContent =
     { idle: t("statusIdle"), running: t("statusRunning"), done: t("statusDone"), error: t("statusError") }
     [_currentStatus] ?? t("statusIdle");
+
+  // Re-apply sections panel labels based on current mode
+  if (_sectionsMode) updateSectionsPanelLabels(_sectionsMode);
 }
 
 // Wire up language buttons
@@ -327,6 +340,8 @@ let _downloadToken   = null;    // one-time token for /api/download/<token>
 let _progressTarget  = 0;
 let _progressCurrent = 0;
 let _progressTicker  = null;
+// "default" = repo set, no template; "template" = template loaded; null = panel hidden
+let _sectionsMode    = null;
 
 // ── Log & progress helpers ───────────────────────────────────────────
 
@@ -631,6 +646,7 @@ async function browseFolder() {
       updateDownloadButton(data.path);
       setButtonState(true);
       log(`${t("logRepoSelected")} ${data.path}`);
+      await loadDefaultSections();
     }
   } catch {
     log(t("logNoFolder"), "error");
@@ -659,12 +675,29 @@ async function browseFile() {
 
 // ── Template sections panel ──────────────────────────────────────────
 
+function updateSectionsPanelLabels(mode) {
+  if (ui.sectionsPanelTitle) {
+    ui.sectionsPanelTitle.textContent =
+      mode === "template" ? t("sectionsDetected") : t("sectionsRecommended");
+  }
+  if (ui.sectionsPanelHint) {
+    ui.sectionsPanelHint.innerHTML =
+      mode === "template" ? t("sectionsHint") : t("sectionsHintDefault");
+  }
+  if (ui.sectionsPanelColName) {
+    ui.sectionsPanelColName.textContent =
+      mode === "template" ? t("colSection") : t("colSectionDefault");
+  }
+}
+
 function clearSectionsPanel() {
   ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
   closePanel(ui.sectionsPanelWrap);
 }
 
-function renderSectionsPanel(sections) {
+function renderSectionsPanel(sections, mode = "template") {
+  _sectionsMode = mode;
+  updateSectionsPanelLabels(mode);
   ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
 
   if (!sections || sections.length === 0) {
@@ -800,13 +833,35 @@ async function loadTemplateSections(templatePath) {
     }
 
     if (data.sections && data.sections.length > 0) {
-      renderSectionsPanel(data.sections);
+      renderSectionsPanel(data.sections, "template");
       log(`${t("logSections")} ${data.sections.length}`);
     } else {
       log(t("logNoSections"), "warn");
     }
   } catch {
     log(t("logSectionsError"), "warn");
+  }
+}
+
+async function loadDefaultSections() {
+  const repoPath = ui.repoInput.value.trim();
+  if (!repoPath || ui.templateInput.value.trim()) return;
+
+  const docType  = selectedDocType();
+  const lang     = ui.outputLangSelect.value || _lang;
+
+  try {
+    const resp = await fetch("/api/default_sections", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ doc_type: docType, lang }),
+    });
+    const data = await resp.json();
+    if (data.sections && data.sections.length > 0) {
+      renderSectionsPanel(data.sections, "default");
+    }
+  } catch {
+    // silently ignore — not critical
   }
 }
 
@@ -933,7 +988,7 @@ async function generate() {
         doc_type:             selectedDocType(),
         primary_color:        ui.colorPrimary.value,
         secondary_color:      ui.colorSecondary.value,
-        locked_sections:      getLockedSections(),
+        locked_sections:      templatePath ? getLockedSections() : null,
         section_enrichments:  getSectionEnrichments(),
         api_key_override:     apiKeyOverride,
         model_override:       modelOverride,
@@ -1001,7 +1056,13 @@ ui.btnDownload.addEventListener("click", download);
 ui.docTypeInputs.forEach((input) => {
   input.addEventListener("change", () => {
     updateDownloadButton(ui.repoInput.value.trim(), !ui.btnDownload.disabled);
+    if (_sectionsMode === "default") loadDefaultSections();
   });
+});
+
+// Reload default sections when output language changes (section names are language-specific)
+ui.outputLangSelect.addEventListener("change", () => {
+  if (_sectionsMode === "default") loadDefaultSections();
 });
 
 ui.themeToggle.addEventListener("change", () => {
@@ -1014,12 +1075,26 @@ ui.repoInput.addEventListener("input", () => {
   const path = ui.repoInput.value.trim();
   setButtonState(path.length > 0);
   updateDownloadButton(path);
+  if (!path) { _sectionsMode = null; clearSectionsPanel(); }
+});
+
+// Load default sections when repo path is typed manually and the field loses focus
+ui.repoInput.addEventListener("change", () => {
+  const path = ui.repoInput.value.trim();
+  if (path && !ui.templateInput.value.trim()) loadDefaultSections();
 });
 
 ui.templateInput.addEventListener("input", () => {
   const hasTemplate = ui.templateInput.value.trim().length > 0;
   setDocTypeEnabled(!hasTemplate);
-  if (!hasTemplate) clearSectionsPanel();
+  if (!hasTemplate) {
+    // Template removed — switch back to default sections if a repo is set
+    if (ui.repoInput.value.trim()) {
+      loadDefaultSections();
+    } else {
+      clearSectionsPanel();
+    }
+  }
 });
 
 // ── Auto-shutdown / idle tracker (exe only) ──────────────────────────
