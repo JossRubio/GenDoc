@@ -688,6 +688,46 @@ body {
   transition: background 0.25s;
 }
 
+/* Wrapper for col-1 header: label on left, undo button on right */
+.gd-sections-col-name-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  min-width: 0;
+  padding-right: 0.15rem;
+}
+
+/* Undo button — circular arrow, aligned with action icons below */
+.gd-section-undo-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.1rem 0.2rem;
+  border-radius: 4px;
+  color: var(--gd-primary);
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, transform 0.2s;
+  font-family: inherit;
+}
+
+.gd-section-undo-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: rgba(79, 70, 229, 0.12);
+}
+
+.gd-section-undo-btn:active:not(:disabled) {
+  transform: rotate(-30deg);
+}
+
+.gd-section-undo-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
 .gd-sections-col-label-name {
   font-size: 0.68rem;
   font-weight: 600;

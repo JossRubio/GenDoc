@@ -222,7 +222,11 @@
         <div id="sectionsList" class="gd-sections-panel">
           <!-- Column headers — sticky inside the scrollable panel -->
           <div class="gd-sections-cols-header">
-            <span id="sectionsPanelColName" class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
+            <div class="gd-sections-col-name-wrap">
+              <span id="sectionsPanelColName" class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
+              <button type="button" id="btnUndoSections" class="gd-section-undo-btn"
+                      data-i18n-title="undoSectionTooltip" title="Deshacer cambio" disabled>↺</button>
+            </div>
             <span class="gd-sections-col-label" data-i18n="colText">Texto</span>
             <span class="gd-sections-col-label" data-i18n="colTables">Tablas</span>
             <span class="gd-sections-col-label" data-i18n="colDiagrams">Diagramas</span>

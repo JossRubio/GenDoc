@@ -35,6 +35,7 @@ const ui = {
   btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
   btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
   btnAddSection:          document.getElementById("btnAddSection"),
+  btnUndoSections:        document.getElementById("btnUndoSections"),
   outputLangSelect:       document.getElementById("outputLangSelect"),
   // LLM config
   providerSelect:         document.getElementById("providerSelect"),
@@ -89,6 +90,7 @@ const TRANSLATIONS = {
     addSectionPlaceholder: "Nombre de la sección…",
     editSectionTooltip:    "Editar nombre",
     deleteSectionTooltip:  "Eliminar sección",
+    undoSectionTooltip:    "Deshacer cambio",
     colText:           "Texto",
     colTables:         "Tablas",
     colDiagrams:       "Diagramas",
@@ -189,6 +191,7 @@ const TRANSLATIONS = {
     addSectionPlaceholder: "Section name…",
     editSectionTooltip:    "Edit name",
     deleteSectionTooltip:  "Delete section",
+    undoSectionTooltip:    "Undo change",
     colText:           "Text",
     colTables:         "Tables",
     colDiagrams:       "Diagrams",
@@ -351,6 +354,8 @@ let _progressCurrent = 0;
 let _progressTicker  = null;
 // "default" = repo set, no template; "template" = template loaded; null = panel hidden
 let _sectionsMode    = null;
+// Undo history: stack of section-state snapshots (each = array of {title,editChecked,...})
+const _sectionsHistory = [];
 
 // ── Log & progress helpers ───────────────────────────────────────────
 
@@ -699,7 +704,55 @@ function updateSectionsPanelLabels(mode) {
   }
 }
 
+// ── Undo history helpers ─────────────────────────────────────────────
+
+/** Snapshot the current section rows onto the undo stack. */
+function captureHistoryState() {
+  const state = [];
+  ui.sectionsList.querySelectorAll(".gd-section-item").forEach(row => {
+    const title   = row.querySelector(".gd-section-title").textContent;
+    const editCb  = row.querySelector(".gd-section-cb[data-role='edit']");
+    const tableCb = row.querySelector(".gd-section-enrich-cb[data-role='table']");
+    const diagCb  = row.querySelector(".gd-section-enrich-cb[data-role='diagram']");
+    state.push({
+      title,
+      editChecked:   editCb?.checked   ?? true,
+      tableChecked:  tableCb?.checked  ?? false,
+      diagChecked:   diagCb?.checked   ?? false,
+      tableDisabled: tableCb?.disabled ?? false,
+      diagDisabled:  diagCb?.disabled  ?? false,
+    });
+  });
+  _sectionsHistory.push(state);
+  updateUndoBtn();
+}
+
+function updateUndoBtn() {
+  if (ui.btnUndoSections) ui.btnUndoSections.disabled = _sectionsHistory.length === 0;
+}
+
+/** Restore the previous snapshot. */
+function undoSectionsChange() {
+  if (!_sectionsHistory.length) return;
+  const state = _sectionsHistory.pop();
+  ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
+  state.forEach((item, idx) => {
+    const row = createSectionRow(item.title, idx);
+    row.style.animationDelay = "0s";
+    ui.sectionsList.appendChild(row);
+    const editCb  = row.querySelector(".gd-section-cb[data-role='edit']");
+    const tableCb = row.querySelector(".gd-section-enrich-cb[data-role='table']");
+    const diagCb  = row.querySelector(".gd-section-enrich-cb[data-role='diagram']");
+    if (editCb)  { editCb.checked  = item.editChecked; }
+    if (tableCb) { tableCb.checked = item.tableChecked; tableCb.disabled = item.tableDisabled; }
+    if (diagCb)  { diagCb.checked  = item.diagChecked;  diagCb.disabled  = item.diagDisabled;  }
+  });
+  updateUndoBtn();
+}
+
 function clearSectionsPanel() {
+  _sectionsHistory.length = 0;
+  updateUndoBtn();
   ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
   closePanel(ui.sectionsPanelWrap);
 }
@@ -745,6 +798,7 @@ function startEditSectionRow(row) {
 
   function confirm() {
     const newTitle = input.value.trim() || oldTitle;
+    if (newTitle !== oldTitle) captureHistoryState();
     titleSpan.textContent = newTitle;
     row.querySelectorAll("[data-section]").forEach(el => { el.dataset.section = newTitle; });
     cleanup();
@@ -789,7 +843,7 @@ function createSectionRow(title, idx) {
   actionsDiv.appendChild(deleteBtn);
 
   editBtn.addEventListener("click", (e) => { e.stopPropagation(); startEditSectionRow(row); });
-  deleteBtn.addEventListener("click", (e) => { e.stopPropagation(); row.remove(); });
+  deleteBtn.addEventListener("click", (e) => { e.stopPropagation(); captureHistoryState(); row.remove(); updateUndoBtn(); });
 
   nameCell.appendChild(nameSpan);
   nameCell.appendChild(actionsDiv);
@@ -864,6 +918,8 @@ function createSectionRow(title, idx) {
 
 function renderSectionsPanel(sections, mode = "template") {
   _sectionsMode = mode;
+  _sectionsHistory.length = 0;
+  updateUndoBtn();
   updateSectionsPanelLabels(mode);
   ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
 
@@ -929,6 +985,7 @@ function addSectionInputRow() {
     const title = input.value.trim();
     row.remove();
     if (!title) return;
+    captureHistoryState();
     const sectionRow = createSectionRow(title, nextIdx);
     sectionRow.style.animationDelay = "0s";   // appear immediately
     ui.sectionsList.appendChild(sectionRow);
@@ -1044,6 +1101,7 @@ ui.btnDeselectAllSections.addEventListener("click", () => {
   });
 });
 ui.btnAddSection.addEventListener("click", addSectionInputRow);
+ui.btnUndoSections.addEventListener("click", undoSectionsChange);
 
 // ── SSE stream consumer ──────────────────────────────────────────────
 
@@ -1480,7 +1538,7 @@ function dndCommit() {
   if (_dndGhost) { _dndGhost.remove(); _dndGhost = null; }
 
   if (_dndInd && _dndInd.parentNode) {
-    // Insert all dragged rows just before the indicator (preserves relative order)
+    captureHistoryState();
     dndOrderedSel().forEach(r => _dndInd.parentNode.insertBefore(r, _dndInd));
   }
 
