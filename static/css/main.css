@@ -726,17 +726,85 @@ body {
   padding-top: 0.18rem;
   padding-bottom: 0.18rem;
   border-radius: 6px;
-  transition: background 0.15s;
+  cursor: grab;
+  user-select: none;
+  transition: background 0.15s, opacity 0.15s, outline-color 0.15s;
 }
 
 .gd-section-item:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Selection highlight */
+.gd-section-item.is-selected {
+  background: rgba(79, 70, 229, 0.16) !important;
+  outline: 1px solid rgba(79, 70, 229, 0.4);
+  outline-offset: -1px;
+}
+
+/* Source rows dimmed during drag */
+.gd-section-item.is-drag-source {
+  opacity: 0.28;
+}
+
 /* Name cell — text wraps naturally; checkboxes stay centred vertically */
 .gd-section-name-cell {
   min-width: 0;
   padding-right: 0.4rem;
+  touch-action: none;   /* allow pointer capture without scroll interference */
+}
+
+/* Checkbox area keeps default pointer, not grab */
+.gd-enrich-cell,
+.gd-enrich-cell label {
+  cursor: default;
+}
+
+/* Drop-indicator line inserted between rows */
+.gd-drop-indicator {
+  height: 2px;
+  background: var(--gd-primary);
+  border-radius: 1px;
+  margin: 0 6px;
+  flex-shrink: 0;
+  pointer-events: none;
+  animation: gd-ind-in 0.1s ease forwards;
+}
+
+@keyframes gd-ind-in {
+  from { opacity: 0; transform: scaleX(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Ghost element — floating preview while dragging */
+.gd-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9990;
+  background: var(--gd-surface);
+  border: 1.5px solid var(--gd-primary);
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--gd-text);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.gd-drag-ghost-count {
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: var(--gd-primary);
+  color: #fff;
+  border-radius: 10px;
+  padding: 0.05rem 0.4rem;
+  flex-shrink: 0;
 }
 
 .gd-section-title {

@@ -1268,6 +1268,198 @@ ui.templateInput.addEventListener("input", () => {
   }, 1000);
 })();
 
+// ── Sections drag-and-drop ───────────────────────────────────────────
+//
+// Click on a row name → toggle selection (highlighted).
+// Drag any selected row → all selected rows move together.
+// A thin blue indicator line shows the drop position.
+
+const _dndSel = new Set();   // currently selected .gd-section-item elements
+let _dndPtr   = null;        // pre-drag pointer state  {x, y, el}
+let _dndActive = false;      // true once drag threshold crossed
+let _dndGhost = null;        // floating ghost element
+let _dndInd   = null;        // drop-indicator element
+
+const DND_THRESHOLD = 5;     // px before drag starts
+
+// ── Selection helpers ──────────────────────────────────────────────
+
+function dndToggleSelect(row) {
+  if (_dndSel.has(row)) {
+    _dndSel.delete(row);
+    row.classList.remove("is-selected");
+  } else {
+    _dndSel.add(row);
+    row.classList.add("is-selected");
+  }
+}
+
+function dndClearSelect() {
+  _dndSel.forEach(r => r.classList.remove("is-selected", "is-drag-source"));
+  _dndSel.clear();
+}
+
+/** Return selected rows in their current DOM order. */
+function dndOrderedSel() {
+  return [...ui.sectionsList.querySelectorAll(".gd-section-item")]
+    .filter(r => _dndSel.has(r));
+}
+
+// ── Ghost helpers ──────────────────────────────────────────────────
+
+function dndBuildGhost() {
+  const names = dndOrderedSel()
+    .map(r => r.querySelector(".gd-section-title").textContent);
+  const g = document.createElement("div");
+  g.className = "gd-drag-ghost";
+  const nameSpan = document.createElement("span");
+  nameSpan.textContent = names[0];
+  g.appendChild(nameSpan);
+  if (names.length > 1) {
+    const badge = document.createElement("span");
+    badge.className   = "gd-drag-ghost-count";
+    badge.textContent = `+${names.length - 1}`;
+    g.appendChild(badge);
+  }
+  return g;
+}
+
+function dndMoveGhost(x, y) {
+  if (!_dndGhost) return;
+  _dndGhost.style.left = `${x + 14}px`;
+  _dndGhost.style.top  = `${y - 12}px`;
+}
+
+// ── Drop indicator ─────────────────────────────────────────────────
+
+function dndShowIndicator(ref, before) {
+  if (!_dndInd) {
+    _dndInd = document.createElement("div");
+    _dndInd.className = "gd-drop-indicator";
+  } else {
+    // Re-animate on move
+    _dndInd.style.animation = "none";
+    void _dndInd.offsetWidth;
+    _dndInd.style.animation = "";
+  }
+  ref.parentNode.insertBefore(_dndInd, before ? ref : ref.nextSibling);
+}
+
+function dndHideIndicator() {
+  if (_dndInd && _dndInd.parentNode) _dndInd.parentNode.removeChild(_dndInd);
+}
+
+// ── Drag lifecycle ─────────────────────────────────────────────────
+
+function dndStart(e) {
+  _dndActive = true;
+  const row = _dndPtr.el;
+
+  // Dragging unselected row → select only it
+  if (!_dndSel.has(row)) {
+    dndClearSelect();
+    _dndSel.add(row);
+    row.classList.add("is-selected");
+  }
+
+  _dndSel.forEach(r => r.classList.add("is-drag-source"));
+
+  _dndGhost = dndBuildGhost();
+  document.body.appendChild(_dndGhost);
+  dndMoveGhost(e.clientX, e.clientY);
+}
+
+function dndUpdate(e) {
+  dndMoveGhost(e.clientX, e.clientY);
+
+  const listRect = ui.sectionsList.getBoundingClientRect();
+  if (e.clientY < listRect.top || e.clientY > listRect.bottom) {
+    dndHideIndicator();
+    return;
+  }
+
+  const targets = [
+    ...ui.sectionsList.querySelectorAll(".gd-section-item:not(.is-drag-source)"),
+  ];
+  if (!targets.length) { dndHideIndicator(); return; }
+
+  // Find insertion point: before the first target whose midpoint is below cursor
+  let ref    = null;
+  let before = true;
+  for (const t of targets) {
+    const mid = t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2;
+    if (e.clientY <= mid) { ref = t; before = true; break; }
+    ref = t; before = false;
+  }
+  dndShowIndicator(ref, before);
+}
+
+function dndCommit() {
+  _dndActive = false;
+  if (_dndGhost) { _dndGhost.remove(); _dndGhost = null; }
+
+  if (_dndInd && _dndInd.parentNode) {
+    // Insert all dragged rows just before the indicator (preserves relative order)
+    dndOrderedSel().forEach(r => _dndInd.parentNode.insertBefore(r, _dndInd));
+  }
+
+  dndHideIndicator();
+  dndClearSelect();
+}
+
+function dndCancel() {
+  _dndActive = false;
+  if (_dndGhost) { _dndGhost.remove(); _dndGhost = null; }
+  dndHideIndicator();
+  _dndSel.forEach(r => r.classList.remove("is-drag-source"));
+}
+
+// ── Document-level listeners (live only during a drag gesture) ─────
+
+function dndOnMove(e) {
+  if (!_dndPtr) return;
+  const dist = Math.hypot(e.clientX - _dndPtr.x, e.clientY - _dndPtr.y);
+  if (!_dndActive && dist > DND_THRESHOLD) dndStart(e);
+  if (_dndActive) dndUpdate(e);
+}
+
+function dndOnUp() {
+  document.removeEventListener("pointermove",  dndOnMove);
+  document.removeEventListener("pointerup",    dndOnUp);
+  document.removeEventListener("pointercancel", dndOnCancel);
+  if (_dndActive) {
+    dndCommit();
+  } else if (_dndPtr) {
+    // Short tap with no movement → toggle selection
+    dndToggleSelect(_dndPtr.el);
+  }
+  _dndPtr = null;
+}
+
+function dndOnCancel() {
+  document.removeEventListener("pointermove",  dndOnMove);
+  document.removeEventListener("pointerup",    dndOnUp);
+  document.removeEventListener("pointercancel", dndOnCancel);
+  if (_dndActive) dndCancel();
+  _dndPtr = null;
+}
+
+// ── Attach to section list (event delegation) ──────────────────────
+
+ui.sectionsList.addEventListener("pointerdown", (e) => {
+  const row = e.target.closest(".gd-section-item");
+  if (!row) return;
+  // Don't intercept checkbox / label interactions
+  if (e.target.closest(".gd-enrich-cell, .gd-section-cb, .gd-section-enrich-cb")) return;
+
+  e.preventDefault();
+  _dndPtr = { x: e.clientX, y: e.clientY, el: row };
+
+  document.addEventListener("pointermove",   dndOnMove);
+  document.addEventListener("pointerup",     dndOnUp);
+  document.addEventListener("pointercancel", dndOnCancel);
+});
+
 // ── Init ─────────────────────────────────────────────────────────────
 
 setStatus("idle");
