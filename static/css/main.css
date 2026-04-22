@@ -747,11 +747,67 @@ body {
   opacity: 0.28;
 }
 
-/* Name cell — text wraps naturally; checkboxes stay centred vertically */
+/* Name cell — flex row: title + action buttons */
 .gd-section-name-cell {
   min-width: 0;
   padding-right: 0.4rem;
-  touch-action: none;   /* allow pointer capture without scroll interference */
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.gd-section-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--gd-log-color);
+  line-height: 1.35;
+  word-break: break-word;
+  transition: color 0.25s;
+}
+
+/* Action buttons (edit + delete) — visible on row hover or selection */
+.gd-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gd-section-item:hover .gd-section-actions,
+.gd-section-item.is-selected .gd-section-actions {
+  opacity: 1;
+}
+
+.gd-section-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem 0.25rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s;
+  font-family: inherit;
+}
+
+.gd-section-action-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.gd-section-action-btn--edit   { color: var(--gd-muted); }
+.gd-section-action-btn--delete { color: #f87171; }
+
+/* Inline rename input inside the name cell */
+.gd-section-rename-input {
+  flex: 1;
+  min-width: 0;
+  margin-right: 0.2rem;
 }
 
 /* Checkbox area keeps default pointer, not grab */
@@ -805,14 +861,6 @@ body {
   border-radius: 10px;
   padding: 0.05rem 0.4rem;
   flex-shrink: 0;
-}
-
-.gd-section-title {
-  font-size: 0.8rem;
-  color: var(--gd-log-color);
-  line-height: 1.35;
-  word-break: break-word;
-  transition: color 0.25s;
 }
 
 /* Checkbox wrapper cells — centre the single checkbox */

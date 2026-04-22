@@ -87,6 +87,8 @@ const TRANSLATIONS = {
     colSectionDefault: "Sección recomendada",
     addSection:        "+ Incorporar sección",
     addSectionPlaceholder: "Nombre de la sección…",
+    editSectionTooltip:    "Editar nombre",
+    deleteSectionTooltip:  "Eliminar sección",
     colText:           "Texto",
     colTables:         "Tablas",
     colDiagrams:       "Diagramas",
@@ -185,6 +187,8 @@ const TRANSLATIONS = {
     colSectionDefault: "Recommended section",
     addSection:        "+ Add section",
     addSectionPlaceholder: "Section name…",
+    editSectionTooltip:    "Edit name",
+    deleteSectionTooltip:  "Delete section",
     colText:           "Text",
     colTables:         "Tables",
     colDiagrams:       "Diagrams",
@@ -700,6 +704,60 @@ function clearSectionsPanel() {
   closePanel(ui.sectionsPanelWrap);
 }
 
+/** Replace the section title with an inline input to rename it. */
+function startEditSectionRow(row) {
+  const nameCell  = row.querySelector(".gd-section-name-cell");
+  const titleSpan = nameCell.querySelector(".gd-section-title");
+  const actions   = nameCell.querySelector(".gd-section-actions");
+  const oldTitle  = titleSpan.textContent;
+
+  titleSpan.style.display = "none";
+  actions.style.display   = "none";
+
+  const input = document.createElement("input");
+  input.type        = "text";
+  input.className   = "gd-section-add-input gd-section-rename-input";
+  input.value       = oldTitle;
+
+  const btnConfirm = document.createElement("button");
+  btnConfirm.type        = "button";
+  btnConfirm.className   = "gd-section-add-btn gd-section-add-btn--confirm";
+  btnConfirm.textContent = "✓";
+
+  const btnCancel = document.createElement("button");
+  btnCancel.type        = "button";
+  btnCancel.className   = "gd-section-add-btn gd-section-add-btn--cancel";
+  btnCancel.textContent = "✕";
+
+  nameCell.appendChild(input);
+  nameCell.appendChild(btnConfirm);
+  nameCell.appendChild(btnCancel);
+  input.focus();
+  input.select();
+
+  function cleanup() {
+    input.remove();
+    btnConfirm.remove();
+    btnCancel.remove();
+    titleSpan.style.display = "";
+    actions.style.display   = "";
+  }
+
+  function confirm() {
+    const newTitle = input.value.trim() || oldTitle;
+    titleSpan.textContent = newTitle;
+    row.querySelectorAll("[data-section]").forEach(el => { el.dataset.section = newTitle; });
+    cleanup();
+  }
+
+  btnConfirm.addEventListener("click", confirm);
+  btnCancel.addEventListener("click",  cleanup);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter")  { e.preventDefault(); confirm();  }
+    if (e.key === "Escape") { e.preventDefault(); cleanup(); }
+  });
+}
+
 /** Build a single section row element. idx is used for unique IDs + stagger delay. */
 function createSectionRow(title, idx) {
   const row = document.createElement("div");
@@ -711,7 +769,30 @@ function createSectionRow(title, idx) {
   const nameSpan = document.createElement("span");
   nameSpan.className   = "gd-section-title";
   nameSpan.textContent = title;
+
+  const actionsDiv = document.createElement("div");
+  actionsDiv.className = "gd-section-actions";
+
+  const editBtn = document.createElement("button");
+  editBtn.type      = "button";
+  editBtn.className = "gd-section-action-btn gd-section-action-btn--edit";
+  editBtn.title     = t("editSectionTooltip");
+  editBtn.textContent = "✎";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type      = "button";
+  deleteBtn.className = "gd-section-action-btn gd-section-action-btn--delete";
+  deleteBtn.title     = t("deleteSectionTooltip");
+  deleteBtn.textContent = "✕";
+
+  actionsDiv.appendChild(editBtn);
+  actionsDiv.appendChild(deleteBtn);
+
+  editBtn.addEventListener("click", (e) => { e.stopPropagation(); startEditSectionRow(row); });
+  deleteBtn.addEventListener("click", (e) => { e.stopPropagation(); row.remove(); });
+
   nameCell.appendChild(nameSpan);
+  nameCell.appendChild(actionsDiv);
 
   // Col 2: Texto / edit checkbox
   const editId = `sec-edit-${idx}`;
@@ -1450,7 +1531,7 @@ ui.sectionsList.addEventListener("pointerdown", (e) => {
   const row = e.target.closest(".gd-section-item");
   if (!row) return;
   // Don't intercept checkbox / label interactions
-  if (e.target.closest(".gd-enrich-cell, .gd-section-cb, .gd-section-enrich-cb")) return;
+  if (e.target.closest(".gd-enrich-cell, .gd-section-cb, .gd-section-enrich-cb, .gd-section-actions, .gd-section-rename-input")) return;
 
   e.preventDefault();
   _dndPtr = { x: e.clientX, y: e.clientY, el: row };
