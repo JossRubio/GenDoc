@@ -790,6 +790,71 @@ body {
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
+/* ── Add-section inline row ──────────────────────────────────────── */
+
+.gd-section-add-row {
+  display: grid;
+  grid-template-columns: 1fr 58px 58px 58px;
+  align-items: center;
+  padding: 0.28rem 0.25cm;
+  animation: gd-item-in 0.18s ease forwards;
+}
+
+/* Input occupies the name column */
+.gd-section-add-input {
+  border: 1px solid var(--gd-primary);
+  border-radius: 6px;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--gd-log-color);
+  background: rgba(79, 70, 229, 0.08);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+  margin-right: 0.25rem;
+}
+
+.gd-section-add-input::placeholder {
+  color: rgba(205, 214, 244, 0.3);
+  font-size: 0.74rem;
+}
+
+.gd-section-add-input:focus {
+  background: rgba(79, 70, 229, 0.14);
+}
+
+/* Confirm + cancel span the 3 checkbox columns */
+.gd-section-add-actions {
+  grid-column: 2 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.gd-section-add-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.22rem 0.35rem;
+  border-radius: 5px;
+  transition: background 0.13s, opacity 0.13s;
+  opacity: 0.7;
+  font-family: inherit;
+}
+
+.gd-section-add-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.gd-section-add-btn--confirm { color: #4ade80; }
+.gd-section-add-btn--cancel  { color: #f87171; }
+
 /* ── Output language selector ────────────────────────────────────── */
 
 .gd-output-lang-select {

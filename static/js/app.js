@@ -34,6 +34,7 @@ const ui = {
   sectionsList:           document.getElementById("sectionsList"),
   btnSelectAllSections:   document.getElementById("btnSelectAllSections"),
   btnDeselectAllSections: document.getElementById("btnDeselectAllSections"),
+  btnAddSection:          document.getElementById("btnAddSection"),
   outputLangSelect:       document.getElementById("outputLangSelect"),
   // LLM config
   providerSelect:         document.getElementById("providerSelect"),
@@ -84,6 +85,8 @@ const TRANSLATIONS = {
     sectionsHintDefault: "Las secciones mostradas son las predeterminadas para este tipo de documento. Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para incluir esos elementos en cada sección generada.",
     colSection:        "Sección detectada",
     colSectionDefault: "Sección recomendada",
+    addSection:        "+ Incorporar sección",
+    addSectionPlaceholder: "Nombre de la sección…",
     colText:           "Texto",
     colTables:         "Tablas",
     colDiagrams:       "Diagramas",
@@ -180,6 +183,8 @@ const TRANSLATIONS = {
     sectionsHintDefault: "The sections shown are the defaults for this document type. Use <strong>Tables</strong> and <strong>Diagrams</strong> to include those elements in each generated section.",
     colSection:        "Detected section",
     colSectionDefault: "Recommended section",
+    addSection:        "+ Add section",
+    addSectionPlaceholder: "Section name…",
     colText:           "Text",
     colTables:         "Tables",
     colDiagrams:       "Diagrams",
@@ -691,14 +696,95 @@ function updateSectionsPanelLabels(mode) {
 }
 
 function clearSectionsPanel() {
-  ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
+  ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
   closePanel(ui.sectionsPanelWrap);
+}
+
+/** Build a single section row element. idx is used for unique IDs + stagger delay. */
+function createSectionRow(title, idx) {
+  const row = document.createElement("div");
+  row.className = "gd-section-item";
+
+  // Col 1: section name
+  const nameCell = document.createElement("div");
+  nameCell.className = "gd-section-name-cell";
+  const nameSpan = document.createElement("span");
+  nameSpan.className   = "gd-section-title";
+  nameSpan.textContent = title;
+  nameCell.appendChild(nameSpan);
+
+  // Col 2: Texto / edit checkbox
+  const editId = `sec-edit-${idx}`;
+  const editCb = document.createElement("input");
+  editCb.type            = "checkbox";
+  editCb.id              = editId;
+  editCb.checked         = true;
+  editCb.className       = "gd-section-cb";
+  editCb.dataset.section = title;
+  editCb.dataset.role    = "edit";
+
+  const editCell = document.createElement("div");
+  editCell.className = "gd-enrich-cell";
+  const editLabel = document.createElement("label");
+  editLabel.htmlFor = editId;
+  editLabel.title   = "Generar / editar texto de esta sección";
+  editCell.appendChild(editCb);
+  editCell.appendChild(editLabel);
+
+  // Col 3: Tabla checkbox
+  const tableId = `sec-tbl-${idx}`;
+  const tableCb = document.createElement("input");
+  tableCb.type            = "checkbox";
+  tableCb.id              = tableId;
+  tableCb.checked         = false;
+  tableCb.className       = "gd-section-enrich-cb";
+  tableCb.dataset.section = title;
+  tableCb.dataset.role    = "table";
+
+  const tableCell = document.createElement("div");
+  tableCell.className = "gd-enrich-cell";
+  const tableLabel = document.createElement("label");
+  tableLabel.htmlFor = tableId;
+  tableLabel.title   = "Incluir tabla en esta sección";
+  tableCell.appendChild(tableCb);
+  tableCell.appendChild(tableLabel);
+
+  // Col 4: Diagrama checkbox
+  const diagId = `sec-diag-${idx}`;
+  const diagCb = document.createElement("input");
+  diagCb.type            = "checkbox";
+  diagCb.id              = diagId;
+  diagCb.checked         = false;
+  diagCb.className       = "gd-section-enrich-cb";
+  diagCb.dataset.section = title;
+  diagCb.dataset.role    = "diagram";
+
+  const diagCell = document.createElement("div");
+  diagCell.className = "gd-enrich-cell";
+  const diagLabel = document.createElement("label");
+  diagLabel.htmlFor = diagId;
+  diagLabel.title   = "Incluir diagrama en esta sección";
+  diagCell.appendChild(diagCb);
+  diagCell.appendChild(diagLabel);
+
+  editCb.addEventListener("change", () => {
+    tableCb.disabled = !editCb.checked;
+    diagCb.disabled  = !editCb.checked;
+    if (!editCb.checked) { tableCb.checked = false; diagCb.checked = false; }
+  });
+
+  row.appendChild(nameCell);
+  row.appendChild(editCell);
+  row.appendChild(tableCell);
+  row.appendChild(diagCell);
+  row.style.animationDelay = `${0.28 + idx * 0.045}s`;
+  return row;
 }
 
 function renderSectionsPanel(sections, mode = "template") {
   _sectionsMode = mode;
   updateSectionsPanelLabels(mode);
-  ui.sectionsList.querySelectorAll(".gd-section-item").forEach(el => el.remove());
+  ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
 
   if (!sections || sections.length === 0) {
     closePanel(ui.sectionsPanelWrap);
@@ -706,88 +792,79 @@ function renderSectionsPanel(sections, mode = "template") {
   }
 
   sections.forEach((title, idx) => {
-    const row = document.createElement("div");
-    row.className = "gd-section-item";
-
-    // ── Col 1: section name ────────────────────────────────────────
-    const nameCell = document.createElement("div");
-    nameCell.className = "gd-section-name-cell";
-    const nameSpan = document.createElement("span");
-    nameSpan.className   = "gd-section-title";
-    nameSpan.textContent = title;
-    nameCell.appendChild(nameSpan);
-
-    // ── Col 2: Texto / edit checkbox ───────────────────────────────
-    const editId = `sec-edit-${idx}`;
-    const editCb = document.createElement("input");
-    editCb.type            = "checkbox";
-    editCb.id              = editId;
-    editCb.checked         = true;
-    editCb.className       = "gd-section-cb";
-    editCb.dataset.section = title;
-    editCb.dataset.role    = "edit";
-
-    const editCell = document.createElement("div");
-    editCell.className = "gd-enrich-cell";
-    const editLabel = document.createElement("label");
-    editLabel.htmlFor  = editId;
-    editLabel.title    = "Generar / editar texto de esta sección";
-    editCell.appendChild(editCb);
-    editCell.appendChild(editLabel);
-
-    // ── Col 3: Tabla checkbox ──────────────────────────────────────
-    const tableId = `sec-tbl-${idx}`;
-    const tableCb = document.createElement("input");
-    tableCb.type            = "checkbox";
-    tableCb.id              = tableId;
-    tableCb.checked         = false;
-    tableCb.className       = "gd-section-enrich-cb";
-    tableCb.dataset.section = title;
-    tableCb.dataset.role    = "table";
-
-    const tableCell = document.createElement("div");
-    tableCell.className = "gd-enrich-cell";
-    const tableLabel = document.createElement("label");
-    tableLabel.htmlFor = tableId;
-    tableLabel.title   = "Incluir tabla en esta sección";
-    tableCell.appendChild(tableCb);
-    tableCell.appendChild(tableLabel);
-
-    // ── Col 4: Diagrama checkbox ───────────────────────────────────
-    const diagId = `sec-diag-${idx}`;
-    const diagCb = document.createElement("input");
-    diagCb.type            = "checkbox";
-    diagCb.id              = diagId;
-    diagCb.checked         = false;
-    diagCb.className       = "gd-section-enrich-cb";
-    diagCb.dataset.section = title;
-    diagCb.dataset.role    = "diagram";
-
-    const diagCell = document.createElement("div");
-    diagCell.className = "gd-enrich-cell";
-    const diagLabel = document.createElement("label");
-    diagLabel.htmlFor = diagId;
-    diagLabel.title   = "Incluir diagrama en esta sección";
-    diagCell.appendChild(diagCb);
-    diagCell.appendChild(diagLabel);
-
-    // Disable enrichment checkboxes when edit (Texto) is unchecked
-    editCb.addEventListener("change", () => {
-      tableCb.disabled = !editCb.checked;
-      diagCb.disabled  = !editCb.checked;
-      if (!editCb.checked) { tableCb.checked = false; diagCb.checked = false; }
-    });
-
-    row.appendChild(nameCell);
-    row.appendChild(editCell);
-    row.appendChild(tableCell);
-    row.appendChild(diagCell);
-    // Stagger each row: panel children animate in ~0.25s, then rows cascade
-    row.style.animationDelay = `${0.28 + idx * 0.045}s`;
-    ui.sectionsList.appendChild(row);
+    ui.sectionsList.appendChild(createSectionRow(title, idx));
   });
 
   openPanel(ui.sectionsPanelWrap);
+}
+
+/** Show an inline input row at the bottom of the sections list to add a new section. */
+function addSectionInputRow() {
+  // Prevent duplicate input rows
+  if (ui.sectionsList.querySelector(".gd-section-add-row")) {
+    ui.sectionsList.querySelector(".gd-section-add-input")?.focus();
+    return;
+  }
+
+  const nextIdx = ui.sectionsList.querySelectorAll(".gd-section-item").length;
+
+  const row = document.createElement("div");
+  row.className = "gd-section-add-row";
+
+  // Col 1: text input
+  const input = document.createElement("input");
+  input.type        = "text";
+  input.className   = "gd-section-add-input";
+  input.placeholder = t("addSectionPlaceholder");
+  input.spellcheck  = false;
+
+  // Cols 2-4: confirm + cancel buttons
+  const actions = document.createElement("div");
+  actions.className = "gd-section-add-actions";
+
+  const btnConfirm = document.createElement("button");
+  btnConfirm.type      = "button";
+  btnConfirm.className = "gd-section-add-btn gd-section-add-btn--confirm";
+  btnConfirm.title     = "Confirmar";
+  btnConfirm.textContent = "✓";
+
+  const btnCancel = document.createElement("button");
+  btnCancel.type      = "button";
+  btnCancel.className = "gd-section-add-btn gd-section-add-btn--cancel";
+  btnCancel.title     = "Cancelar";
+  btnCancel.textContent = "✕";
+
+  actions.appendChild(btnConfirm);
+  actions.appendChild(btnCancel);
+  row.appendChild(input);
+  row.appendChild(actions);
+  ui.sectionsList.appendChild(row);
+
+  // Scroll the new row into view and focus
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  input.focus();
+
+  function confirm() {
+    const title = input.value.trim();
+    row.remove();
+    if (!title) return;
+    const sectionRow = createSectionRow(title, nextIdx);
+    sectionRow.style.animationDelay = "0s";   // appear immediately
+    ui.sectionsList.appendChild(sectionRow);
+    sectionRow.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function cancel() {
+    row.remove();
+  }
+
+  btnConfirm.addEventListener("click", confirm);
+  btnCancel.addEventListener("click",  cancel);
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter")  { e.preventDefault(); confirm(); }
+    if (e.key === "Escape") { e.preventDefault(); cancel();  }
+  });
 }
 
 /**
@@ -885,6 +962,7 @@ ui.btnDeselectAllSections.addEventListener("click", () => {
     diag.checked = false; diag.disabled = true;
   });
 });
+ui.btnAddSection.addEventListener("click", addSectionInputRow);
 
 // ── SSE stream consumer ──────────────────────────────────────────────
 
