@@ -44,7 +44,7 @@ El documento resultante incluye:
 | **OpenAI** | GPT-4o, o3 |
 | **Azure AI** | Cualquier modelo desplegado en Azure AI Foundry |
 
-Si no se configura una API key en la interfaz, se utiliza la definida en el servidor (archivo `.env`). La detección del proveedor es automática para claves con prefijos conocidos (`sk-ant-`, `sk-`).
+La detección del proveedor es automática para claves con prefijos conocidos (`sk-ant-` → Anthropic, `sk-` → OpenAI). Para Google AI y Azure se selecciona el proveedor manualmente desde la interfaz.
 
 ---
 
@@ -52,15 +52,23 @@ Si no se configura una API key en la interfaz, se utiliza la definida en el serv
 
 ### Opción A — Ejecutable (recomendada)
 
-1. Descarga la carpeta `dist/` o el archivo `GenDoc.exe`.
-2. Asegúrate de que el archivo `.env` esté en la **misma carpeta** que `GenDoc.exe` con tu API Key:
-   ```
-   GOOGLE_API_KEY=tu_api_key_aqui
-   ```
-3. Haz doble clic en **`GenDoc.exe`**.  
+1. Descarga el archivo `GenDoc.exe`.
+2. Haz doble clic en **`GenDoc.exe`**.  
    El navegador se abrirá automáticamente en `http://localhost:5000`.
+3. Ingresa tu API key directamente en la interfaz (campo **Configuración de LLM**).
 
-No se requiere Python ni ninguna dependencia adicional.
+> **La API key es obligatoria cuando se usa el ejecutable.** El `.exe` no carga claves desde ningún archivo de configuración; cada usuario debe ingresar la suya en la interfaz antes de generar.
+
+No se requiere Python ni ninguna dependencia adicional. El ejecutable puede ubicarse en cualquier carpeta del sistema.
+
+#### Cierre automático del proceso
+
+Cuando se ejecuta como `.exe`, el servidor se apaga automáticamente si detecta inactividad prolongada:
+
+- Mientras el usuario interactúa con la interfaz, se envían señales de actividad cada 5 segundos.
+- Tras **90 segundos** sin interacción (sin mover el mouse, escribir, hacer scroll ni hacer clic), aparece un modal de cuenta regresiva de 30 segundos.
+- Si el usuario no hace clic en **"Mantener activo"** antes de que el contador llegue a cero, el proceso del servidor se cierra solo.
+- Esto también cubre el caso de cerrar la pestaña del navegador: al no recibir señales de actividad durante 120 segundos en total, el proceso termina sin necesidad de hacerlo manualmente.
 
 ---
 
@@ -69,7 +77,7 @@ No se requiere Python ni ninguna dependencia adicional.
 #### Requisitos
 
 - Python 3.10 o superior
-- Una API Key del proveedor LLM que desees usar
+- Una API key del proveedor LLM que desees usar
 
 #### Instalación
 
@@ -86,8 +94,8 @@ source venv/bin/activate     # macOS / Linux
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Configurar la API Key en el archivo .env
-GOOGLE_API_KEY=tu_api_key_aqui
+# 4. (Opcional) Configurar una API key por defecto en el archivo .env
+LLM_API_KEY=tu_api_key_aqui
 ```
 
 #### Ejecución
@@ -98,12 +106,16 @@ python run.py
 
 Se abrirá automáticamente el navegador en `http://localhost:5000`.
 
+> En modo código fuente, si se configura `LLM_API_KEY` en el archivo `.env`, esa clave se usa como fallback cuando no se ingresa ninguna en la interfaz. Si se ingresa una key en la interfaz, esta tiene prioridad.
+
 ---
 
 ### Uso paso a paso
 
-1. **Configura el LLM** *(opcional)*: selecciona el proveedor, ingresa tu API key y haz clic en "Cargar API-key" para validarla y elegir un modelo específico.
-2. **Selecciona el repositorio** haciendo clic en "Examinar" junto al campo correspondiente. Al hacerlo, se desplegará automáticamente el panel de secciones con las secciones recomendadas para el tipo de documento seleccionado.
+1. **Configura el LLM**: selecciona el proveedor, ingresa tu API key y haz clic en **"Cargar API-key"** para validarla y elegir un modelo específico.
+   - Al usar el ejecutable, este paso es **obligatorio**.
+   - Al usar el código fuente con `.env` configurado, puede omitirse si ya hay una clave definida en el servidor.
+2. **Selecciona el repositorio** haciendo clic en **"Examinar"** junto al campo correspondiente. Al hacerlo, se desplegará automáticamente el panel de secciones con las secciones recomendadas para el tipo de documento seleccionado.
 3. *(Opcional)* Selecciona una **plantilla `.docx`** si quieres editar un documento existente en lugar de generar uno desde cero. Las secciones detectadas en la plantilla reemplazarán a las recomendadas en el panel.
 4. **Gestiona las secciones** desde el panel:
    - Marca o desmarca la columna **Texto** para indicar qué secciones debe redactar el LLM (las desmarcadas se copian tal cual desde la plantilla).
@@ -153,8 +165,6 @@ Cuando se carga una plantilla `.docx`, GenDoc entra en modo de edición quirúrg
    - Márgenes y propiedades de página del documento original.
 4. Entrega el documento editado listo para descargar.
 
-Se realizaron pruebas exitosas de edición sobre documentos cargados como plantilla utilizando el panel de secciones de la aplicación, confirmando que los márgenes, estilos y secciones bloqueadas se preservan correctamente en el documento resultante.
-
 ---
 
 ## Personalización del documento
@@ -162,6 +172,7 @@ Se realizaron pruebas exitosas de edición sobre documentos cargados como planti
 Desde la interfaz es posible configurar:
 
 - **Idioma del documento**: el contenido generado puede redactarse en Español o en Inglés, de forma independiente al idioma de la interfaz.
+- **Idioma de la interfaz**: la interfaz puede cambiarse entre Español e Inglés mediante los botones **ES / EN** en la esquina superior derecha.
 - **Color principal**: se aplica al título, subtítulos H1/H2 y encabezados de tablas.
 - **Color secundario**: se aplica a subtítulos H3 en adelante y bloques de código.
 
@@ -187,11 +198,18 @@ GenDoc/
 │   ├── routes.py          # Endpoints Flask
 │   ├── services.py        # Capa de negocio y streaming SSE
 │   └── template_editor.py # Edición quirúrgica de plantillas .docx
+├── build/
+│   ├── build.bat          # Script de build del ejecutable
+│   └── create_icon.py     # Generación del ícono
 ├── static/
 │   ├── css/main.css
 │   └── js/app.js
 ├── templates/
 │   └── index.html
+├── dist/
+│   └── GenDoc.exe         # Ejecutable listo para distribuir
+├── gendoc.spec            # Configuración de PyInstaller
+├── launcher.py            # Entry point del ejecutable
 ├── requirements.txt
-└── run.py
+└── run.py                 # Entry point para desarrollo
 ```
