@@ -81,15 +81,16 @@ def api_default_sections():
 
 @main.route("/api/models", methods=["POST"])
 def api_list_models():
-    body     = request.get_json(silent=True) or {}
-    api_key  = (body.get("api_key")  or "").strip()
-    provider = (body.get("provider") or "").strip() or None
+    body           = request.get_json(silent=True) or {}
+    api_key        = (body.get("api_key")        or "").strip()
+    provider       = (body.get("provider")       or "").strip() or None
+    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
 
     if not api_key:
         return jsonify({"error": "No se proporcionó API key."}), 400
 
     try:
-        models = ai_service.list_models(api_key, provider)
+        models = ai_service.list_models(api_key, provider, azure_endpoint)
         return jsonify({"models": models, "provider": provider or ai_service.detect_provider(api_key)})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 401
@@ -99,15 +100,19 @@ def api_list_models():
 
 @main.route("/api/validate_key", methods=["POST"])
 def api_validate_key():
-    body     = request.get_json(silent=True) or {}
-    api_key  = (body.get("api_key")  or "").strip()
-    provider = (body.get("provider") or "").strip() or None
+    body           = request.get_json(silent=True) or {}
+    api_key        = (body.get("api_key")        or "").strip()
+    provider       = (body.get("provider")       or "").strip() or None
+    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
 
     if not api_key:
         return jsonify({"valid": False, "error": "No se proporcionó API key."}), 400
 
+    import sys
+    print(f"[validate_key] provider={provider!r}  endpoint={azure_endpoint!r}", file=sys.stderr, flush=True)
+
     try:
-        models = ai_service.validate_key(api_key, provider)
+        models = ai_service.validate_key(api_key, provider, azure_endpoint)
         return jsonify({"valid": True, "models": models})
     except ValueError as exc:
         return jsonify({"valid": False, "error": str(exc)})
@@ -117,16 +122,17 @@ def api_validate_key():
 
 @main.route("/api/test_model", methods=["POST"])
 def api_test_model():
-    body     = request.get_json(silent=True) or {}
-    api_key  = (body.get("api_key")  or "").strip()
-    provider = (body.get("provider") or "").strip()
-    model    = (body.get("model")    or "").strip()
+    body           = request.get_json(silent=True) or {}
+    api_key        = (body.get("api_key")        or "").strip()
+    provider       = (body.get("provider")       or "").strip()
+    model          = (body.get("model")          or "").strip()
+    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
 
     if not api_key or not model:
         return jsonify({"available": False, "error": "Falta API key o nombre de modelo."}), 400
 
     try:
-        ai_service.test_model(api_key, provider, model)
+        ai_service.test_model(api_key, provider, model, azure_endpoint)
         return jsonify({"available": True})
     except (ValueError, RuntimeError) as exc:
         return jsonify({"available": False, "error": str(exc)})
@@ -144,9 +150,10 @@ def api_generate():
     secondary_color  = (body.get("secondary_color")  or "").strip() or None
     locked_sections     = body.get("locked_sections")      # list[str] | None
     section_enrichments = body.get("section_enrichments")  # dict[str, list[str]] | None
-    api_key_override    = (body.get("api_key_override")  or "").strip() or None
-    model_override      = (body.get("model_override")    or "").strip() or None
-    provider_override   = (body.get("provider_override") or "").strip() or None
+    api_key_override        = (body.get("api_key_override")        or "").strip() or None
+    model_override          = (body.get("model_override")          or "").strip() or None
+    provider_override       = (body.get("provider_override")       or "").strip() or None
+    azure_endpoint_override = (body.get("azure_endpoint_override") or "").strip() or None
     lang                = (body.get("lang")              or "es").strip()
     if lang not in ("es", "en"):
         lang = "es"
@@ -169,7 +176,8 @@ def api_generate():
                                                     primary_color, secondary_color,
                                                     locked_sections, section_enrichments,
                                                     api_key_override, model_override,
-                                                    provider_override, lang, output_lang):
+                                                    provider_override, azure_endpoint_override,
+                                                    lang, output_lang):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

@@ -480,6 +480,7 @@ def _surgical_flow(
     output_lang: str,
     doc_type: str,
     output_dir: str,
+    azure_endpoint_override: str | None = None,
 ):
     """
     Surgical editing mode: edits only the selected sections of a .docx
@@ -549,6 +550,7 @@ def _surgical_flow(
                 api_key_override=api_key_override,
                 model_override=model_override,
                 provider_override=provider_override,
+                azure_endpoint_override=azure_endpoint_override,
             )
 
         try:
@@ -655,6 +657,7 @@ def generate_documentation_stream(
     api_key_override: str | None = None,
     model_override: str | None = None,
     provider_override: str | None = None,
+    azure_endpoint_override: str | None = None,
     lang: str = "es",
     output_lang: str = "es",
 ):
@@ -673,7 +676,7 @@ def generate_documentation_stream(
         yield from _run(repo_path, template_path, doc_type, primary_color,
                         secondary_color, locked_sections, section_enrichments,
                         api_key_override, model_override, provider_override,
-                        lang, output_lang)
+                        azure_endpoint_override, lang, output_lang)
     except Exception as exc:
         yield _error(f"{'Unexpected internal error' if lang == 'en' else 'Error interno inesperado'}: {exc}.")
 
@@ -685,6 +688,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
          api_key_override: str | None = None,
          model_override: str | None = None,
          provider_override: str | None = None,
+         azure_endpoint_override: str | None = None,
          lang: str = "es",
          output_lang: str = "es"):
     """Inner generator — all expected errors are handled here."""
@@ -765,6 +769,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             locked_sections, section_enrichments,
             api_key_override, model_override, provider_override,
             lang, output_lang, doc_type, output_dir,
+            azure_endpoint_override,
         )
         return
 
@@ -791,6 +796,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
             api_key_override=api_key_override,
             model_override=model_override,
             provider_override=provider_override,
+            azure_endpoint_override=azure_endpoint_override,
             output_lang=output_lang,
         )
 

@@ -36,9 +36,8 @@ _AZURE_DEFAULT_API_VERSION = "2025-01-01-preview"
 # Deployment names in Foundry typically match the model ID below, but users
 # can override with the manual input if their deployment has a custom name.
 _AZURE_RECOMMENDED_MODELS: list[dict] = [
-    {"id": "gpt-4.1",        "display_name": "GPT-4.1"},
-    {"id": "gpt-5.4-mini",   "display_name": "GPT-5.4 mini"},
-    {"id": "DeepSeek-V3.2",  "display_name": "DeepSeek-V3.2"},
+    {"id": "DeepSeek-V4-Pro", "display_name": "DeepSeek-V4-Pro"},
+    {"id": "DeepSeek-V3.2",   "display_name": "DeepSeek-V3.2"},
 ]
 
 # Google fallback chain (tried in order when primary returns a retryable error)
@@ -52,31 +51,29 @@ _GOOGLE_RETRYABLE_CODES = {404, 429, 503}
 
 # ── Azure AI config helper ────────────────────────────────────────────
 
-def _get_azure_config() -> tuple[str, str | None, str, bool]:
+def _get_azure_config(endpoint_override: str | None = None) -> tuple[str, str | None, str, bool]:
     """
-    Parse AZURE_AI_ENDPOINT and return
+    Parse the Azure endpoint and return
     (openai_base_url, project_base_url, api_version, is_foundry).
 
-    openai_base_url  → used by openai.OpenAI / AzureOpenAI for chat completions.
-    project_base_url → used by the management API to list deployments (Foundry only).
+    Resolution order: endpoint_override → AZURE_AI_ENDPOINT env var → AZURE_OPENAI_ENDPOINT env var.
 
     is_foundry=True  → Azure AI Foundry project endpoint (.services.ai.azure.com)
     is_foundry=False → Classic Azure OpenAI endpoint (.openai.azure.com)
 
     Accepts the full "Target URI" from Foundry (e.g. ending in /openai/v1/responses)
     and automatically extracts the correct base URL.
-
-    Supports both AZURE_AI_ENDPOINT (new) and AZURE_OPENAI_ENDPOINT (legacy).
-    Raises ValueError if neither is set.
+    Raises ValueError if no endpoint is available.
     """
     raw = (
-        os.getenv("AZURE_AI_ENDPOINT", "").strip()
+        (endpoint_override or "").strip()
+        or os.getenv("AZURE_AI_ENDPOINT", "").strip()
         or os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()   # backward compat
     )
     if not raw:
         raise ValueError(
-            "AZURE_AI_ENDPOINT no está configurado en el archivo .env. "
-            "Pega el 'Target URI' de tu deployment en Azure AI Foundry."
+            "Endpoint de Azure AI no configurado. "
+            "Ingresa el 'Target URI' de tu deployment de Azure AI Foundry en el campo Endpoint."
         )
 
     api_version = (
@@ -85,15 +82,23 @@ def _get_azure_config() -> tuple[str, str | None, str, bool]:
         or _AZURE_DEFAULT_API_VERSION
     )
 
-    # Azure AI Foundry project endpoint — contains /openai/v1/ in the path.
+    # Case 1: URL already contains /openai/v1/ — extract the base directly.
     if "/openai/v1/" in raw:
         openai_base  = raw[: raw.index("/openai/v1/") + len("/openai/v1/")]
-        project_base = raw[: raw.index("/openai/v1/")]   # everything before /openai/v1/
+        project_base = raw[: raw.index("/openai/v1/")]
         if not project_base.endswith("/"):
             project_base += "/"
         return openai_base, project_base, api_version, True
 
-    # Classic Azure OpenAI endpoint (.openai.azure.com)
+    # Case 2: Azure AI Foundry domain (.services.ai.azure.com) without /openai/v1/.
+    # This happens when the user pastes the project endpoint directly.
+    # The OpenAI-compatible API lives at {project_endpoint}/openai/v1/.
+    if ".services.ai.azure.com" in raw:
+        project_base = raw.rstrip("/") + "/"
+        openai_base  = raw.rstrip("/") + "/openai/v1/"
+        return openai_base, project_base, api_version, True
+
+    # Case 3: Classic Azure OpenAI endpoint (.openai.azure.com)
     return raw.rstrip("/") + "/", None, api_version, False
 
 
@@ -346,7 +351,7 @@ def _call_openai(prompt: str, api_key: str, model: str) -> str:
 
 # ── Azure AI helpers ──────────────────────────────────────────────────
 
-def _azure_client(api_key: str):
+def _azure_client(api_key: str, endpoint_override: str | None = None):
     """
     Build and return the correct OpenAI client for the configured Azure endpoint.
 
@@ -360,7 +365,7 @@ def _azure_client(api_key: str):
             "El paquete 'openai' no está instalado. "
             "Ejecuta: pip install openai"
         )
-    openai_base, _project_base, api_version, is_foundry = _get_azure_config()
+    openai_base, _project_base, api_version, is_foundry = _get_azure_config(endpoint_override)
     if is_foundry:
         return _openai.OpenAI(base_url=openai_base, api_key=api_key)
     return _openai.AzureOpenAI(
@@ -368,7 +373,7 @@ def _azure_client(api_key: str):
     )
 
 
-def _list_azure(api_key: str) -> list[dict]:
+def _list_azure(api_key: str, endpoint_override: str | None = None) -> list[dict]:
     """
     List deployments from Azure AI Foundry using the management REST API.
 
@@ -380,7 +385,7 @@ def _list_azure(api_key: str) -> list[dict]:
     """
     import httpx
 
-    openai_base, project_base, api_version, is_foundry = _get_azure_config()
+    openai_base, project_base, api_version, is_foundry = _get_azure_config(endpoint_override)
 
     if is_foundry:
         # Azure AI Foundry project-scoped endpoints (services.ai.azure.com) do not
@@ -395,7 +400,7 @@ def _list_azure(api_key: str) -> list[dict]:
     except ImportError:
         raise RuntimeError("El paquete 'openai' no está instalado.")
     try:
-        client = _azure_client(api_key)
+        client = _azure_client(api_key, endpoint_override)
         result = []
         for m in client.models.list():
             mid = getattr(m, "id", None) or ""
@@ -410,38 +415,48 @@ def _list_azure(api_key: str) -> list[dict]:
         raise RuntimeError(f"Error al listar modelos de Azure AI: {exc}") from exc
 
 
-def _validate_azure(api_key: str) -> None:
+def _validate_azure(api_key: str, endpoint_override: str | None = None) -> None:
     """
-    Validate an Azure AI Foundry key by making a lightweight HEAD/GET request.
+    Validate an Azure AI Foundry key using the OpenAI SDK.
 
-    For Foundry endpoints: GET {openai_base}/models
-      - 401 / 403 → key rejected → raises ValueError
-      - Anything else (including 404) → key accepted, endpoint just doesn't exist
+    For Foundry endpoints: tries models.list() via openai.OpenAI(base_url=...).
+      - AuthenticationError (401) or PermissionDeniedError (403) → invalid key
+      - NotFoundError (404) or any other response → key accepted by the server
 
     For classic Azure OpenAI: delegates to _list_azure (SDK validates the key).
     Raises ValueError on auth error, RuntimeError on connectivity error.
     """
-    import httpx
-
-    openai_base, _, _, is_foundry = _get_azure_config()
+    openai_base, _, _, is_foundry = _get_azure_config(endpoint_override)
 
     if not is_foundry:
-        _list_azure(api_key)   # raises ValueError on auth error
+        _list_azure(api_key, endpoint_override)
         return
 
-    url = openai_base.rstrip("/") + "/models"
     try:
-        r = httpx.get(url, headers={"api-key": api_key}, timeout=10)
-        if r.status_code in (401, 403):
-            raise ValueError(
-                f"API key de Azure AI inválida o no autorizada ({r.status_code})."
-            )
-        # 404 or anything else → key was accepted by the server
-    except httpx.RequestError as exc:
+        import openai as _openai
+    except ImportError:
+        raise RuntimeError("El paquete 'openai' no está instalado.")
+
+    import sys
+    print(f"[_validate_azure] openai_base={openai_base!r}", file=sys.stderr, flush=True)
+
+    try:
+        client = _openai.OpenAI(base_url=openai_base, api_key=api_key)
+        client.models.list()
+    except _openai.AuthenticationError as exc:
+        raise ValueError(f"API key de Azure AI inválida o no autorizada: {exc}") from exc
+    except _openai.PermissionDeniedError as exc:
+        raise ValueError(f"API key de Azure AI sin permisos: {exc}") from exc
+    except _openai.APIConnectionError as exc:
         raise RuntimeError(f"No se pudo conectar con Azure AI: {exc}") from exc
+    except Exception:
+        # NotFoundError (404), or any other response from the server
+        # means the request reached Azure and was not rejected due to auth.
+        pass
 
 
-def _call_azure(prompt: str, api_key: str, model: str) -> str:
+def _call_azure(prompt: str, api_key: str, model: str,
+                endpoint_override: str | None = None) -> str:
     try:
         import openai as _openai
     except ImportError:
@@ -450,7 +465,7 @@ def _call_azure(prompt: str, api_key: str, model: str) -> str:
             "Ejecuta: pip install openai"
         )
     try:
-        client = _azure_client(api_key)
+        client = _azure_client(api_key, endpoint_override)
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -475,7 +490,8 @@ def _call_azure(prompt: str, api_key: str, model: str) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────
 
-def test_model(api_key: str, provider: str, model: str) -> None:
+def test_model(api_key: str, provider: str, model: str,
+               azure_endpoint: str | None = None) -> None:
     """
     Make a minimal 1-token call to verify the model is deployed and reachable.
 
@@ -518,7 +534,7 @@ def test_model(api_key: str, provider: str, model: str) -> None:
         except ImportError:
             raise RuntimeError("El paquete 'openai' no está instalado.")
         try:
-            client = _azure_client(api_key) if prov == "azure" else _openai.OpenAI(api_key=api_key)
+            client = _azure_client(api_key, azure_endpoint) if prov == "azure" else _openai.OpenAI(api_key=api_key)
             client.chat.completions.create(
                 model=model, max_tokens=1,
                 messages=[{"role": "user", "content": "Hi"}],
@@ -538,7 +554,8 @@ def test_model(api_key: str, provider: str, model: str) -> None:
         raise ValueError(f"Proveedor desconocido: {provider}")
 
 
-def validate_key(api_key: str, provider: str | None = None) -> list[dict]:
+def validate_key(api_key: str, provider: str | None = None,
+                 azure_endpoint: str | None = None) -> list[dict]:
     """
     Validate *api_key* for the given provider and return available models.
 
@@ -549,12 +566,13 @@ def validate_key(api_key: str, provider: str | None = None) -> list[dict]:
     """
     prov = (provider or detect_provider(api_key)).lower()
     if prov == "azure":
-        _validate_azure(api_key)
+        _validate_azure(api_key, azure_endpoint)
         return _AZURE_RECOMMENDED_MODELS
     return list_models(api_key, prov)
 
 
-def list_models(api_key: str, provider: str | None = None) -> list[dict]:
+def list_models(api_key: str, provider: str | None = None,
+                azure_endpoint: str | None = None) -> list[dict]:
     """
     Return models available to *api_key* that support text generation.
 
@@ -578,7 +596,7 @@ def list_models(api_key: str, provider: str | None = None) -> list[dict]:
     if prov == "openai":
         return _list_openai(api_key)
     if prov == "azure":
-        return _list_azure(api_key)
+        return _list_azure(api_key, azure_endpoint)
     return _list_google(api_key)
 
 
@@ -588,6 +606,7 @@ def call_llm(
     api_key_override: str | None = None,
     model_override:   str | None = None,
     provider_override: str | None = None,
+    azure_endpoint_override: str | None = None,
 ) -> str:
     """
     Send *prompt* to the configured LLM and return the response as a string.
@@ -640,8 +659,8 @@ def call_llm(
 
     if provider == "azure":
         if not model:
-            model = os.getenv("LLM_MODEL", "").strip() or "gpt-4o"
-        return _call_azure(prompt, api_key, model)
+            model = os.getenv("LLM_MODEL", "").strip() or "DeepSeek-V4-Pro"
+        return _call_azure(prompt, api_key, model, azure_endpoint_override)
 
     # Google (default)
     if not model:

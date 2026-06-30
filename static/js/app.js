@@ -49,6 +49,8 @@ const ui = {
   keyValidStatus:         document.getElementById("keyValidStatus"),
   btnTestModel:           document.getElementById("btnTestModel"),
   modelTestStatus:        document.getElementById("modelTestStatus"),
+  azureEndpointWrap:      document.getElementById("azureEndpointWrap"),
+  azureEndpointInput:     document.getElementById("azureEndpointInput"),
   azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
   azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
   azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
@@ -147,7 +149,8 @@ const TRANSLATIONS = {
     errorLoading:      "— Error al cargar —",
     modelsAvailable:   "modelo(s) disponible(s)",
     modelError:        "Error:",
-    azureDeploymentPlaceholder: "Nombre del deployment (ej: gpt-4.1)…",
+    azureEndpointPlaceholder:   "Target URI del deployment (https://…)",
+    azureDeploymentPlaceholder: "Nombre del deployment (ej: DeepSeek-V4-Pro)…",
     azureRecommendedTitle: "Modelos recomendados",
     azureRecommendedWarn:  "(requiere deploy en Foundry)",
     azureTooltip:          "Los modelos mostrados solo funcionarán si el usuario con su api-key configuró el deploy de estos previamente en Azure AI Foundry.",
@@ -248,7 +251,8 @@ const TRANSLATIONS = {
     errorLoading:      "— Error loading —",
     modelsAvailable:   "model(s) available",
     modelError:        "Error:",
-    azureDeploymentPlaceholder: "Deployment name (e.g. gpt-4.1)…",
+    azureEndpointPlaceholder:   "Deployment Target URI (https://…)",
+    azureDeploymentPlaceholder: "Deployment name (e.g. DeepSeek-V4-Pro)…",
     azureRecommendedTitle: "Recommended models",
     azureRecommendedWarn:  "(requires deploy in Foundry)",
     azureTooltip:          "Displayed models will only work if the user with their api-key previously configured the deploy of these in Azure AI Foundry.",
@@ -477,7 +481,8 @@ function syncAzureUI() {
   const azure = isAzure();
   // Load models button always visible for all providers
   ui.btnLoadModels.style.display = "";
-  // Azure-only columns: dropdown label and manual input
+  // Azure-only fields: endpoint input, dropdown label, manual deployment input
+  ui.azureEndpointWrap.style.display   = azure ? "" : "none";
   ui.azureDropdownLabel.style.display  = azure ? "" : "none";
   ui.azureDeploymentWrap.style.display = azure ? "" : "none";
   // Hide model selector and clear key status whenever the provider changes
@@ -553,7 +558,12 @@ async function testModel() {
     const resp = await fetch("/api/test_model", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ api_key: apiKey, provider: ui.providerSelect.value, model }),
+      body:    JSON.stringify({
+        api_key:        apiKey,
+        provider:       ui.providerSelect.value,
+        model,
+        azure_endpoint: isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+      }),
     });
     const data = await resp.json();
     if (data.available) {
@@ -594,7 +604,11 @@ async function validateKey() {
     const resp = await fetch("/api/validate_key", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ api_key: apiKey, provider: ui.providerSelect.value }),
+      body:    JSON.stringify({
+        api_key:        apiKey,
+        provider:       ui.providerSelect.value,
+        azure_endpoint: isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+      }),
     });
     const data = await resp.json();
 
@@ -1207,11 +1221,12 @@ async function generate() {
         secondary_color:      ui.colorSecondary.value,
         locked_sections:      templatePath ? getLockedSections() : null,
         section_enrichments:  getSectionEnrichments(),
-        api_key_override:     apiKeyOverride,
-        model_override:       modelOverride,
-        provider_override:    providerOverride,
-        lang:                 _lang,
-        output_lang:          ui.outputLangSelect.value || _lang,
+        api_key_override:         apiKeyOverride,
+        model_override:           modelOverride,
+        provider_override:        providerOverride,
+        azure_endpoint_override:  isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+        lang:                     _lang,
+        output_lang:              ui.outputLangSelect.value || _lang,
       }),
     });
 

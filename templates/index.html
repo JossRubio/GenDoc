@@ -95,6 +95,19 @@
           </button>
         </div>
 
+        <!-- Azure endpoint input (shown only when Azure AI is selected) -->
+        <div id="azureEndpointWrap" class="gd-path-group mb-2" style="display:none;">
+          <input
+            id="azureEndpointInput"
+            type="text"
+            class="gd-path-input"
+            data-i18n-placeholder="azureEndpointPlaceholder"
+            placeholder="Target URI del deployment (https://…)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
         <!-- API key validation status -->
         <div id="keyValidStatusWrap" style="min-height:1.1rem; margin-bottom:0.25rem;">
           <span id="keyValidStatus" class="gd-key-valid-status"></span>
