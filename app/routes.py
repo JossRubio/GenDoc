@@ -108,9 +108,6 @@ def api_validate_key():
     if not api_key:
         return jsonify({"valid": False, "error": "No se proporcionó API key."}), 400
 
-    import sys
-    print(f"[validate_key] provider={provider!r}  endpoint={azure_endpoint!r}", file=sys.stderr, flush=True)
-
     try:
         models = ai_service.validate_key(api_key, provider, azure_endpoint)
         return jsonify({"valid": True, "models": models})

@@ -437,9 +437,6 @@ def _validate_azure(api_key: str, endpoint_override: str | None = None) -> None:
     except ImportError:
         raise RuntimeError("El paquete 'openai' no está instalado.")
 
-    import sys
-    print(f"[_validate_azure] openai_base={openai_base!r}", file=sys.stderr, flush=True)
-
     try:
         client = _openai.OpenAI(base_url=openai_base, api_key=api_key)
         client.models.list()
@@ -455,6 +452,12 @@ def _validate_azure(api_key: str, endpoint_override: str | None = None) -> None:
         pass
 
 
+# Retry schedule for 429 (rate limit) responses from Azure AI Foundry.
+# Deployments on the "Global Standard" tier often have low default TPM/RPM
+# quotas, so a short wait-and-retry resolves most transient rate-limit hits.
+_AZURE_RATE_LIMIT_BACKOFF = [10, 20, 40]  # seconds
+
+
 def _call_azure(prompt: str, api_key: str, model: str,
                 endpoint_override: str | None = None) -> str:
     try:
@@ -464,28 +467,62 @@ def _call_azure(prompt: str, api_key: str, model: str,
             "El paquete 'openai' no está instalado. "
             "Ejecuta: pip install openai"
         )
-    try:
-        client = _azure_client(api_key, endpoint_override)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.choices[0].message.content if response.choices else ""
-        if not text or not text.strip():
-            raise RuntimeError("Azure devolvió una respuesta vacía.")
-        return text
-    except _openai.AuthenticationError as exc:
-        raise RuntimeError(f"API key de Azure inválida o no autorizada: {exc}") from exc
-    except _openai.RateLimitError as exc:
-        raise RuntimeError(f"Cuota de Azure superada (429): {exc}") from exc
-    except _openai.APIStatusError as exc:
-        raise RuntimeError(f"Error de la API de Azure ({exc.status_code}): {exc}") from exc
-    except (ConnectionError, TimeoutError, OSError) as exc:
-        raise RuntimeError(f"No se pudo conectar con Azure. Detalle: {exc}") from exc
-    except (ValueError, RuntimeError):
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"Error inesperado (Azure AI): {exc}") from exc
+
+    import time as _time
+    import sys
+
+    client = _azure_client(api_key, endpoint_override)
+
+    _chars = len(prompt)
+    _est_tokens = _chars // 4   # rough heuristic: ~4 chars per token
+    print(
+        f"[_call_azure] model={model!r}  prompt_chars={_chars}  "
+        f"est_tokens≈{_est_tokens}",
+        file=sys.stderr, flush=True,
+    )
+
+    for attempt, wait in enumerate([0] + _AZURE_RATE_LIMIT_BACKOFF):
+        if wait:
+            _time.sleep(wait)
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = response.choices[0].message.content if response.choices else ""
+            if not text or not text.strip():
+                raise RuntimeError("Azure devolvió una respuesta vacía.")
+            return text
+        except _openai.RateLimitError as exc:
+            try:
+                _h = exc.response.headers
+                print(
+                    "[_call_azure] 429 headers: "
+                    f"limit-tokens={_h.get('x-ratelimit-limit-tokens')}  "
+                    f"remaining-tokens={_h.get('x-ratelimit-remaining-tokens')}  "
+                    f"limit-requests={_h.get('x-ratelimit-limit-requests')}  "
+                    f"remaining-requests={_h.get('x-ratelimit-remaining-requests')}  "
+                    f"retry-after={_h.get('retry-after')}",
+                    file=sys.stderr, flush=True,
+                )
+            except Exception:
+                pass
+            if attempt >= len(_AZURE_RATE_LIMIT_BACKOFF):
+                raise RuntimeError(
+                    f"Cuota de Azure superada (429) tras {len(_AZURE_RATE_LIMIT_BACKOFF)} "
+                    f"reintentos: {exc}"
+                ) from exc
+            continue   # try again after the next backoff wait
+        except _openai.AuthenticationError as exc:
+            raise RuntimeError(f"API key de Azure inválida o no autorizada: {exc}") from exc
+        except _openai.APIStatusError as exc:
+            raise RuntimeError(f"Error de la API de Azure ({exc.status_code}): {exc}") from exc
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise RuntimeError(f"No se pudo conectar con Azure. Detalle: {exc}") from exc
+        except (ValueError, RuntimeError):
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Error inesperado (Azure AI): {exc}") from exc
 
 
 # ── Public API ────────────────────────────────────────────────────────
