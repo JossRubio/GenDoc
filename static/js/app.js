@@ -1020,6 +1020,19 @@ function addSectionInputRow() {
 }
 
 /**
+ * Returns all section titles currently visible in the sections panel, in order.
+ * Used to override the generator's hardcoded section list when no template is loaded.
+ */
+function getAllSections() {
+  const titles = [];
+  ui.sectionsList.querySelectorAll(".gd-section-item .gd-section-title").forEach(span => {
+    const title = span.textContent.trim();
+    if (title) titles.push(title);
+  });
+  return titles.length > 0 ? titles : null;
+}
+
+/**
  * Returns the list of section titles the user wants to LOCK (not edited).
  */
 function getLockedSections() {
@@ -1221,6 +1234,7 @@ async function generate() {
         secondary_color:      ui.colorSecondary.value,
         locked_sections:      templatePath ? getLockedSections() : null,
         section_enrichments:  getSectionEnrichments(),
+        sections_override:    !templatePath ? getAllSections() : null,
         api_key_override:         apiKeyOverride,
         model_override:           modelOverride,
         provider_override:        providerOverride,

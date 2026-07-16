@@ -147,6 +147,7 @@ def api_generate():
     secondary_color  = (body.get("secondary_color")  or "").strip() or None
     locked_sections     = body.get("locked_sections")      # list[str] | None
     section_enrichments = body.get("section_enrichments")  # dict[str, list[str]] | None
+    sections_override   = body.get("sections_override")    # list[str] | None
     api_key_override        = (body.get("api_key_override")        or "").strip() or None
     model_override          = (body.get("model_override")          or "").strip() or None
     provider_override       = (body.get("provider_override")       or "").strip() or None
@@ -162,6 +163,8 @@ def api_generate():
         locked_sections = None
     if not isinstance(section_enrichments, dict):
         section_enrichments = None
+    if not isinstance(sections_override, list):
+        sections_override = None
 
     if not repo_path:
         def immediate_error():
@@ -174,7 +177,8 @@ def api_generate():
                                                     locked_sections, section_enrichments,
                                                     api_key_override, model_override,
                                                     provider_override, azure_endpoint_override,
-                                                    lang, output_lang):
+                                                    lang, output_lang,
+                                                    sections_override=sections_override):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
             if event.get("type") == "ready":

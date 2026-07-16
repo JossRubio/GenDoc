@@ -115,6 +115,7 @@ class BaseGenerator:
         locked_sections: list[str] | None = None,
         section_enrichments: dict | None = None,
         output_lang: str = "es",
+        sections_override: list[str] | None = None,
     ) -> str:
         """
         Assemble the full prompt for this document type.
@@ -139,7 +140,7 @@ class BaseGenerator:
         lang = output_lang if output_lang in ("es", "en") else "es"
 
         # ── Resolve section names in the target language ───────────────
-        sections = getattr(self, f"SECTIONS_{lang.upper()}", None) or self.SECTIONS
+        sections = sections_override or getattr(self, f"SECTIONS_{lang.upper()}", None) or self.SECTIONS
         persona  = getattr(self, f"PERSONA_{lang.upper()}", None)  or self.PERSONA
         extra    = getattr(self, f"EXTRA_INSTRUCTIONS_{lang.upper()}", None) or self.EXTRA_INSTRUCTIONS
 
@@ -302,6 +303,7 @@ class BaseGenerator:
         locked_sections: list[str] | None = None,
         *,
         section_enrichments: dict | None = None,
+        sections_override: list[str] | None = None,
         api_key_override: str | None = None,
         model_override: str | None = None,
         provider_override: str | None = None,
@@ -328,7 +330,8 @@ class BaseGenerator:
         """
         try:
             prompt = self.build_prompt(repo_scan, template_content, locked_sections,
-                                       section_enrichments, output_lang)
+                                       section_enrichments, output_lang,
+                                       sections_override=sections_override)
         except Exception as exc:
             raise RuntimeError(
                 f"No se pudo construir el prompt para '{self.DISPLAY_NAME}': {exc}"

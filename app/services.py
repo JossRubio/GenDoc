@@ -9,6 +9,7 @@ via Flask's ``stream_with_context``.
 from __future__ import annotations
 
 import os
+import tempfile
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
@@ -660,6 +661,7 @@ def generate_documentation_stream(
     azure_endpoint_override: str | None = None,
     lang: str = "es",
     output_lang: str = "es",
+    sections_override: list[str] | None = None,
 ):
     """
     Generator — yields SSE event dicts as work progresses.
@@ -676,7 +678,8 @@ def generate_documentation_stream(
         yield from _run(repo_path, template_path, doc_type, primary_color,
                         secondary_color, locked_sections, section_enrichments,
                         api_key_override, model_override, provider_override,
-                        azure_endpoint_override, lang, output_lang)
+                        azure_endpoint_override, lang, output_lang,
+                        sections_override=sections_override)
     except Exception as exc:
         yield _error(f"{'Unexpected internal error' if lang == 'en' else 'Error interno inesperado'}: {exc}.")
 
@@ -690,7 +693,8 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
          provider_override: str | None = None,
          azure_endpoint_override: str | None = None,
          lang: str = "es",
-         output_lang: str = "es"):
+         output_lang: str = "es",
+         sections_override: list[str] | None = None):
     """Inner generator — all expected errors are handled here."""
 
     # ── 1. Validate inputs ───────────────────────────────────────────
@@ -758,7 +762,9 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
     except OSError:
         repo_name = Path(repo_path).name
 
-    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
+    _tmp_out = os.path.join(tempfile.gettempdir(), "gendoc_output")
+    os.makedirs(_tmp_out, exist_ok=True)
+    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or _tmp_out
 
     # ── Surgical .docx editing mode ──────────────────────────────────
     # When the template is a .docx we edit sections in-place instead of
@@ -793,6 +799,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         return generator.generate(
             repo_scan, template_content, locked_sections,
             section_enrichments=section_enrichments,
+            sections_override=sections_override,
             api_key_override=api_key_override,
             model_override=model_override,
             provider_override=provider_override,
@@ -853,7 +860,7 @@ def _run(repo_path: str, template_path: str | None, doc_type: str,
         elif _tpl_ext == ".pptx":
             output_fmt = "pptx"
 
-    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or repo_path
+    output_dir = (os.getenv("OUTPUT_DIR") or "").strip() or _tmp_out
 
     try:
         output_path = str(generator.output_path(repo_name, output_dir, fmt=output_fmt))
