@@ -212,40 +212,6 @@
           Proporciona un documento de ejemplo para guiar el estilo de la documentación generada.
         </div>
       </div>
-
-      <!-- ── Secciones de la plantilla ──────────────────────── -->
-      <div id="sectionsPanelWrap" class="gd-panel">
-        <div class="gd-label d-flex align-items-center justify-content-between">
-          <span id="sectionsPanelTitle" data-i18n="sectionsDetected">Secciones detectadas en la plantilla</span>
-          <div class="gd-sections-toggle-row">
-            <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn" data-i18n="selectAll">Seleccionar todo</button>
-            <span class="gd-sections-sep">·</span>
-            <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn" data-i18n="deselectAll">Deseleccionar todo</button>
-            <span class="gd-sections-sep">·</span>
-            <button type="button" id="btnAddSection" class="gd-sections-toggle-btn" data-i18n="addSection">+ Incorporar sección</button>
-          </div>
-        </div>
-        <div id="sectionsPanelHint" class="gd-sections-hint" data-i18n-html="sectionsHint">
-          Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM
-          (las no marcadas se copian exactamente desde la plantilla).
-          Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos
-          elementos en cada sección.
-        </div>
-        <div id="sectionsList" class="gd-sections-panel">
-          <!-- Column headers — sticky inside the scrollable panel -->
-          <div class="gd-sections-cols-header">
-            <div class="gd-sections-col-name-wrap">
-              <span id="sectionsPanelColName" class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
-              <button type="button" id="btnUndoSections" class="gd-section-undo-btn"
-                      data-i18n-title="undoSectionTooltip" title="Deshacer cambio" disabled>↺</button>
-            </div>
-            <span class="gd-sections-col-label" data-i18n="colText">Texto</span>
-            <span class="gd-sections-col-label" data-i18n="colTables">Tablas</span>
-            <span class="gd-sections-col-label" data-i18n="colDiagrams">Diagramas</span>
-          </div>
-        </div>
-      </div>
-
       <!-- ── Idioma del documento ──────────────────────────────── -->
       <div class="mb-4">
         <div class="gd-label">
@@ -286,6 +252,39 @@
             <span class="gd-segment-text" data-i18n="docTypeExecutive">Presentación Ejecutiva</span>
           </label>
 
+        </div>
+      </div>
+
+      <!-- ── Secciones de la plantilla ──────────────────────── -->
+      <div id="sectionsPanelWrap" class="gd-panel">
+        <div class="gd-label d-flex align-items-center justify-content-between">
+          <span id="sectionsPanelTitle" data-i18n="sectionsDetected">Secciones detectadas en la plantilla</span>
+          <div class="gd-sections-toggle-row">
+            <button type="button" id="btnSelectAllSections" class="gd-sections-toggle-btn" data-i18n="selectAll">Seleccionar todo</button>
+            <span class="gd-sections-sep">·</span>
+            <button type="button" id="btnDeselectAllSections" class="gd-sections-toggle-btn" data-i18n="deselectAll">Deseleccionar todo</button>
+            <span class="gd-sections-sep">·</span>
+            <button type="button" id="btnAddSection" class="gd-sections-toggle-btn" data-i18n="addSection">+ Incorporar sección</button>
+          </div>
+        </div>
+        <div id="sectionsPanelHint" class="gd-sections-hint" data-i18n-html="sectionsHint">
+          Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM
+          (las no marcadas se copian exactamente desde la plantilla).
+          Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos
+          elementos en cada sección.
+        </div>
+        <div id="sectionsList" class="gd-sections-panel">
+          <!-- Column headers — sticky inside the scrollable panel -->
+          <div class="gd-sections-cols-header">
+            <div class="gd-sections-col-name-wrap">
+              <span id="sectionsPanelColName" class="gd-sections-col-label-name" data-i18n="colSection">Sección detectada</span>
+              <button type="button" id="btnUndoSections" class="gd-section-undo-btn"
+                      data-i18n-title="undoSectionTooltip" title="Deshacer cambio" disabled>↺</button>
+            </div>
+            <span class="gd-sections-col-label" data-i18n="colText">Texto</span>
+            <span class="gd-sections-col-label" data-i18n="colTables">Tablas</span>
+            <span class="gd-sections-col-label" data-i18n="colDiagrams">Diagramas</span>
+          </div>
         </div>
       </div>
 
