@@ -11,7 +11,7 @@ Subclasses may override ``build_prompt()`` for custom prompt logic, or
 leave it as-is to use the shared structure defined here.
 
 ``generate()`` is a concrete final step: it calls ``build_prompt()``
-followed by ``ai_service.call_gemini()`` and returns a Markdown string.
+followed by ``ai_service.call_llm()`` and returns a Markdown string.
 
 To add a new document type:
   1. Create a new module in this package (e.g. my_type.py).
@@ -326,7 +326,7 @@ class BaseGenerator:
 
         Raises
         ------
-        ValueError   — configuration problems (see ai_service.call_gemini).
+        ValueError   — configuration problems (see ai_service.call_llm).
         RuntimeError — API / network / response errors.
         """
         try:
@@ -346,67 +346,6 @@ class BaseGenerator:
             custom_endpoint_override=custom_endpoint_override,
             custom_format_override=custom_format_override,
         )
-
-    def build_section_prompt(
-        self,
-        repo_scan: RepoScan,
-        section_name: str,
-    ) -> str:
-        """
-        Build a focused prompt to generate a single section of the document.
-
-        The LLM is asked to produce only the content of *section_name*,
-        starting with its ``##`` heading.  The other section names are listed
-        as context so the LLM can calibrate scope and avoid duplication.
-        """
-        sections_context = "\n".join(f"  - {s}" for s in self.SECTIONS)
-        persona_block = (
-            f"## Tu rol y audiencia\n\n{self.PERSONA}\n\n"
-            if self.PERSONA else ""
-        )
-        extra_block = (
-            f"## Instrucciones específicas\n\n{self.EXTRA_INSTRUCTIONS}\n\n"
-            if self.EXTRA_INSTRUCTIONS else ""
-        )
-        repo_context = ai_service.build_repo_context(repo_scan)
-
-        return (
-            "Eres un experto en documentación de software. "
-            f"Tu tarea es escribir UNA sección de un documento "
-            f"'{self.DISPLAY_NAME}' para el repositorio que se describe más abajo.\n\n"
-            f"{persona_block}"
-            f"{_FORMAT_INSTRUCTIONS}\n\n"
-            "## Contexto del documento\n\n"
-            f"El documento completo contiene estas secciones:\n{sections_context}\n\n"
-            "## Sección a generar\n\n"
-            f"Escribe ÚNICAMENTE el contenido de la sección: **{section_name}**\n\n"
-            f"- Empieza con `## {section_name}` como primera línea.\n"
-            "- No incluyas otras secciones ni el título principal del documento.\n"
-            "- Redacta íntegramente en español.\n"
-            "- Basa cada afirmación en el código real del repositorio.\n"
-            "- No incluyas texto introductorio ni comentarios fuera de la sección.\n"
-            "- Responde **únicamente** con el contenido Markdown de esta sección.\n\n"
-            f"{extra_block}"
-            f"---\n\n{repo_context}"
-        )
-
-    def generate_section(self, repo_scan: RepoScan, section_name: str) -> str:
-        """
-        Generate the Markdown content for a single *section_name*.
-
-        Raises
-        ------
-        ValueError   — configuration problems.
-        RuntimeError — API / network / response errors.
-        """
-        try:
-            prompt = self.build_section_prompt(repo_scan, section_name)
-        except Exception as exc:
-            raise RuntimeError(
-                f"No se pudo construir el prompt para la sección '{section_name}': {exc}"
-            ) from exc
-
-        return ai_service.call_gemini(prompt)
 
     # ── Output path helpers ───────────────────────────────────────────
 
