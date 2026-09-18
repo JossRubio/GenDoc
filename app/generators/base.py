@@ -307,7 +307,8 @@ class BaseGenerator:
         api_key_override: str | None = None,
         model_override: str | None = None,
         provider_override: str | None = None,
-        azure_endpoint_override: str | None = None,
+        custom_endpoint_override: str | None = None,
+        custom_format_override: str | None = None,
         output_lang: str = "es",
     ) -> str:
         """
@@ -342,7 +343,8 @@ class BaseGenerator:
             api_key_override=api_key_override,
             model_override=model_override,
             provider_override=provider_override,
-            azure_endpoint_override=azure_endpoint_override,
+            custom_endpoint_override=custom_endpoint_override,
+            custom_format_override=custom_format_override,
         )
 
     def build_section_prompt(

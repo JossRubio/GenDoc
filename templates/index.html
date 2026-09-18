@@ -68,15 +68,25 @@
           <span data-i18n="llmConfig">Configuración de LLM</span>
         </div>
 
-        <!-- Provider selector + API Key row -->
-        <div class="gd-path-group mb-2">
+        <!-- Row 1: provider selector (+ endpoint when Custom is selected) -->
+        <div id="providerRow" class="gd-path-group mb-2">
           <select id="providerSelect" class="gd-provider-select">
             <option value="google">Google AI</option>
             <option value="anthropic">Anthropic</option>
             <option value="openai">OpenAI</option>
-            <option value="azure">Azure AI</option>
+            <option value="custom" data-i18n="providerCustom">Custom (endpoint propio)</option>
           </select>
-          <div class="gd-apikey-wrap">
+          <input
+            id="customEndpointInput"
+            type="text"
+            class="gd-path-input"
+            data-i18n-placeholder="customEndpointPlaceholder"
+            placeholder="Ingrese el Endpoint:"
+            autocomplete="off"
+            spellcheck="false"
+            style="display:none;"
+          />
+          <div id="apiKeyWrap" class="gd-apikey-wrap">
             <input
               id="apiKeyInput"
               type="password"
@@ -95,17 +105,20 @@
           </button>
         </div>
 
-        <!-- Azure endpoint input (shown only when Azure AI is selected) -->
-        <div id="azureEndpointWrap" class="gd-path-group mb-2" style="display:none;">
-          <input
-            id="azureEndpointInput"
-            type="text"
-            class="gd-path-input"
-            data-i18n-placeholder="azureEndpointPlaceholder"
-            placeholder="Target URI del deployment (https://…)"
-            autocomplete="off"
-            spellcheck="false"
-          />
+        <!-- Row 2: API format + API key, used only in Custom mode.
+             The key input and the load button are moved here by app.js. -->
+        <div id="apiKeyRow" class="gd-path-group mb-2" style="display:none;">
+          <select id="customFormatSelect" class="gd-provider-select">
+            <option value="auto" data-i18n="formatAuto">Formato: automático</option>
+            <option value="openai">OpenAI compatible</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google">Google Gemini</option>
+          </select>
+        </div>
+
+        <div id="customHint" style="display:none; font-size:0.75rem; color:#a0a0aa; margin:-0.1rem 0 0.5rem; padding-left:0.1rem;" data-i18n-html="customHint">
+          El formato indica el protocolo que habla el endpoint, no la marca del modelo.
+          <strong>OpenAI compatible</strong> cubre Azure AI, DeepSeek, Kimi, Qwen, Groq, OpenRouter, vLLM y Ollama.
         </div>
 
         <!-- API key validation status -->
@@ -113,18 +126,18 @@
           <span id="keyValidStatus" class="gd-key-valid-status"></span>
         </div>
 
-        <!-- Model selector + Azure manual input (two-column layout for Azure) -->
+        <!-- Model selector + manual model name (two columns in Custom mode) -->
         <div id="modelSelectorWrap" class="gd-panel">
           <div class="gd-model-cols">
 
             <!-- Left column: recommended models dropdown -->
             <div class="gd-model-col">
-              <div id="azureDropdownLabel" class="gd-model-col-label" style="display:none;">
-                <span data-i18n="azureRecommendedTitle">Modelos recomendados</span>
-                <span class="gd-model-col-warn">⚠️ <span data-i18n="azureRecommendedWarn">(requiere deploy en Foundry)</span>
+              <div id="customDropdownLabel" class="gd-model-col-label" style="display:none;">
+                <span data-i18n="customModelsTitle">Modelos del endpoint</span>
+                <span class="gd-model-col-warn">⚠️ <span data-i18n="customModelsWarn">(deben estar desplegados)</span>
                   <span class="gd-tooltip-wrap">
                     <span class="gd-tooltip-icon">?</span>
-                    <span class="gd-tooltip-text" data-i18n="azureTooltip">Los modelos mostrados solo funcionarán si el usuario con su api-key configuró el deploy de estos previamente en Azure AI Foundry.</span>
+                    <span class="gd-tooltip-text" data-i18n="customTooltip">La lista viene del propio endpoint. Si no publica sus modelos, quedará vacía: escribe el nombre del modelo a la derecha. Solo funcionarán los modelos realmente desplegados en ese servidor.</span>
                   </span>
                 </span>
               </div>
@@ -136,18 +149,18 @@
               </div>
             </div>
 
-            <!-- Right column: Azure manual deployment name -->
-            <div id="azureDeploymentWrap" class="gd-model-col" style="display:none;">
+            <!-- Right column: manual model / deployment name -->
+            <div id="customModelWrap" class="gd-model-col" style="display:none;">
               <div class="gd-model-col-label">
-                <span data-i18n="azureManualTitle">Modelo</span>
-                <span class="gd-model-col-hint" data-i18n="azureManualHint">(si no tienes en deploy las recomendaciones)</span>
+                <span data-i18n="customManualTitle">Modelo</span>
+                <span class="gd-model-col-hint" data-i18n="customManualHint">(escríbelo si no aparece en la lista)</span>
               </div>
               <input
-                id="azureDeploymentInput"
+                id="customModelInput"
                 type="text"
                 class="gd-path-input"
-                data-i18n-placeholder="azureDeploymentPlaceholder"
-                placeholder="Nombre del deployment (ej: gpt-4.1)…"
+                data-i18n-placeholder="customModelPlaceholder"
+                placeholder="Nombre del modelo o deployment…"
                 autocomplete="off"
                 spellcheck="false"
               />

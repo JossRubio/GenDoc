@@ -49,11 +49,15 @@ const ui = {
   keyValidStatus:         document.getElementById("keyValidStatus"),
   btnTestModel:           document.getElementById("btnTestModel"),
   modelTestStatus:        document.getElementById("modelTestStatus"),
-  azureEndpointWrap:      document.getElementById("azureEndpointWrap"),
-  azureEndpointInput:     document.getElementById("azureEndpointInput"),
-  azureDropdownLabel:     document.getElementById("azureDropdownLabel"),
-  azureDeploymentWrap:    document.getElementById("azureDeploymentWrap"),
-  azureDeploymentInput:   document.getElementById("azureDeploymentInput"),
+  providerRow:            document.getElementById("providerRow"),
+  apiKeyRow:              document.getElementById("apiKeyRow"),
+  apiKeyWrap:             document.getElementById("apiKeyWrap"),
+  customEndpointInput:    document.getElementById("customEndpointInput"),
+  customFormatSelect:     document.getElementById("customFormatSelect"),
+  customHint:             document.getElementById("customHint"),
+  customDropdownLabel:    document.getElementById("customDropdownLabel"),
+  customModelWrap:        document.getElementById("customModelWrap"),
+  customModelInput:       document.getElementById("customModelInput"),
   // Sections panel dynamic labels
   sectionsPanelTitle:     document.getElementById("sectionsPanelTitle"),
   sectionsPanelHint:      document.getElementById("sectionsPanelHint"),
@@ -149,13 +153,18 @@ const TRANSLATIONS = {
     errorLoading:      "— Error al cargar —",
     modelsAvailable:   "modelo(s) disponible(s)",
     modelError:        "Error:",
-    azureEndpointPlaceholder:   "Target URI del deployment (https://…)",
-    azureDeploymentPlaceholder: "Nombre del deployment (ej: DeepSeek-V4-Pro)…",
-    azureRecommendedTitle: "Modelos recomendados",
-    azureRecommendedWarn:  "(requiere deploy en Foundry)",
-    azureTooltip:          "Los modelos mostrados solo funcionarán si el usuario con su api-key configuró el deploy de estos previamente en Azure AI Foundry.",
-    azureManualTitle:      "Modelo",
-    azureManualHint:       "(si no tienes en deploy las recomendaciones)",
+    providerCustom:             "Custom (endpoint propio)",
+    customEndpointPlaceholder:  "Ingrese el Endpoint:",
+    customApiKeyPlaceholder:    "Ingrese API-Key",
+    customModelPlaceholder:     "Nombre del modelo o deployment…",
+    formatAuto:                 "Formato: automático",
+    customHint:            "El formato indica el protocolo que habla el endpoint, no la marca del modelo. <strong>OpenAI compatible</strong> cubre Azure AI, DeepSeek, Kimi, Qwen, Groq, OpenRouter, vLLM y Ollama.",
+    customModelsTitle:     "Modelos del endpoint",
+    customModelsWarn:      "(deben estar desplegados)",
+    customTooltip:         "La lista viene del propio endpoint. Si no publica sus modelos, quedará vacía: escribe el nombre del modelo a la derecha. Solo funcionarán los modelos realmente desplegados en ese servidor.",
+    customManualTitle:     "Modelo",
+    customManualHint:      "(escríbelo si no aparece en la lista)",
+    customNoEndpoint:      "Ingresa el endpoint antes de cargar la API-key.",
     keyValid:              "✓ API-key válida",
     keyInvalid:            "✗ API-key inválida, revise la clave",
     keyValidating:         "Verificando API-key…",
@@ -251,13 +260,18 @@ const TRANSLATIONS = {
     errorLoading:      "— Error loading —",
     modelsAvailable:   "model(s) available",
     modelError:        "Error:",
-    azureEndpointPlaceholder:   "Deployment Target URI (https://…)",
-    azureDeploymentPlaceholder: "Deployment name (e.g. DeepSeek-V4-Pro)…",
-    azureRecommendedTitle: "Recommended models",
-    azureRecommendedWarn:  "(requires deploy in Foundry)",
-    azureTooltip:          "Displayed models will only work if the user with their api-key previously configured the deploy of these in Azure AI Foundry.",
-    azureManualTitle:      "Model",
-    azureManualHint:       "(if recommended models are not deployed)",
+    providerCustom:             "Custom (own endpoint)",
+    customEndpointPlaceholder:  "Enter the Endpoint:",
+    customApiKeyPlaceholder:    "Enter API-Key",
+    customModelPlaceholder:     "Model or deployment name…",
+    formatAuto:                 "Format: automatic",
+    customHint:            "The format is the protocol the endpoint speaks, not the brand of the model. <strong>OpenAI compatible</strong> covers Azure AI, DeepSeek, Kimi, Qwen, Groq, OpenRouter, vLLM and Ollama.",
+    customModelsTitle:     "Endpoint models",
+    customModelsWarn:      "(must be deployed there)",
+    customTooltip:         "The list comes from the endpoint itself. If it does not publish its models the list stays empty: type the model name on the right. Only models actually deployed on that server will work.",
+    customManualTitle:     "Model",
+    customManualHint:      "(type it if it is not listed)",
+    customNoEndpoint:      "Enter the endpoint before loading the API key.",
     keyValid:              "✓ API key valid",
     keyInvalid:            "✗ Invalid API key, please check the key",
     keyValidating:         "Verifying API key…",
@@ -304,6 +318,9 @@ function applyLang(lang) {
     const key = el.dataset.i18nPlaceholder;
     if (tr[key] !== undefined) el.placeholder = tr[key];
   });
+
+  // The custom provider overrides the API-key placeholder; put it back.
+  if (isCustom()) ui.apiKeyInput.placeholder = tr.customApiKeyPlaceholder;
 
   // title
   document.querySelectorAll("[data-i18n-title]").forEach(el => {
@@ -465,41 +482,65 @@ function setDocTypeEnabled(enabled) {
 // ── LLM config ───────────────────────────────────────────────────────
 
 // Auto-detect provider from key prefix and sync the selector.
-// Only switches for known patterns; Azure and Google keys have no standard prefix
-// so the user must select those manually.
+// Only switches for known patterns; Google keys and custom endpoints have no
+// standard prefix, so the user must select those manually.
 function detectProvider(key) {
   if (key.startsWith("sk-ant-")) return "anthropic";
   if (key.startsWith("sk-"))     return "openai";
   return null;  // unknown — don't auto-switch
 }
 
-function isAzure() {
-  return ui.providerSelect.value === "azure";
+function isCustom() {
+  return ui.providerSelect.value === "custom";
 }
 
-function syncAzureUI() {
-  const azure = isAzure();
-  // Load models button always visible for all providers
-  ui.btnLoadModels.style.display = "";
-  // Azure-only fields: endpoint input, dropdown label, manual deployment input
-  ui.azureEndpointWrap.style.display   = azure ? "" : "none";
-  ui.azureDropdownLabel.style.display  = azure ? "" : "none";
-  ui.azureDeploymentWrap.style.display = azure ? "" : "none";
+// Endpoint and API format, only meaningful for the custom provider.
+function customEndpoint() {
+  return isCustom() ? ui.customEndpointInput.value.trim() : undefined;
+}
+
+function customFormat() {
+  if (!isCustom()) return undefined;
+  const fmt = ui.customFormatSelect.value;
+  return fmt === "auto" ? undefined : fmt;   // undefined -> server auto-detects
+}
+
+// In custom mode the endpoint takes the first row next to the provider
+// selector, and the key input drops to a second row below it. The nodes are
+// moved rather than duplicated, so their event listeners survive.
+function syncProviderUI() {
+  const custom = isCustom();
+
+  ui.customEndpointInput.style.display = custom ? "" : "none";
+  ui.customHint.style.display          = custom ? "" : "none";
+  ui.apiKeyRow.style.display           = custom ? "" : "none";
+  ui.customDropdownLabel.style.display = custom ? "" : "none";
+  ui.customModelWrap.style.display     = custom ? "" : "none";
+
+  const host = custom ? ui.apiKeyRow : ui.providerRow;
+  host.appendChild(ui.apiKeyWrap);
+  host.appendChild(ui.btnLoadModels);
+
+  ui.apiKeyInput.placeholder = custom
+    ? t("customApiKeyPlaceholder")
+    : t("apiKeyPlaceholder");
+
   // Hide model selector and clear key status whenever the provider changes
   closePanel(ui.modelSelectorWrap);
   ui.modelSelectorWrap.dataset.wasVisible = "";
   setKeyStatus("", "");
 }
 
-ui.providerSelect.addEventListener("change", syncAzureUI);
+ui.providerSelect.addEventListener("change", syncProviderUI);
+ui.customFormatSelect.addEventListener("change", () => setKeyStatus("", ""));
 
-// Run once on load in case Azure is pre-selected
-syncAzureUI();
+// Run once on load in case Custom is pre-selected
+syncProviderUI();
 
 ui.apiKeyInput.addEventListener("input", () => {
   const key      = ui.apiKeyInput.value.trim();
   const detected = key ? detectProvider(key) : null;
-  if (detected) { ui.providerSelect.value = detected; syncAzureUI(); }
+  if (detected && !isCustom()) { ui.providerSelect.value = detected; syncProviderUI(); }
 });
 
 ui.btnToggleApiKey.addEventListener("click", () => {
@@ -538,8 +579,8 @@ function setModelTestStatus(msg, type = "info") {
 
 async function testModel() {
   const apiKey = ui.apiKeyInput.value.trim();
-  const model  = isAzure()
-    ? (ui.modelSelect.value.trim() || ui.azureDeploymentInput.value.trim())
+  const model  = isCustom()
+    ? (ui.modelSelect.value.trim() || ui.customModelInput.value.trim())
     : ui.modelSelect.value.trim();
 
   if (!apiKey) {
@@ -560,9 +601,10 @@ async function testModel() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
         api_key:        apiKey,
-        provider:       ui.providerSelect.value,
+        provider:        ui.providerSelect.value,
         model,
-        azure_endpoint: isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+        custom_endpoint: customEndpoint(),
+        custom_format:   customFormat(),
       }),
     });
     const data = await resp.json();
@@ -582,7 +624,7 @@ ui.btnTestModel.addEventListener("click", testModel);
 
 // Clear test status when model selection changes
 ui.modelSelect.addEventListener("change", () => setModelTestStatus("", ""));
-ui.azureDeploymentInput.addEventListener("input",  () => setModelTestStatus("", ""));
+ui.customModelInput.addEventListener("input",  () => setModelTestStatus("", ""));
 
 async function validateKey() {
   const apiKey = ui.apiKeyInput.value.trim();
@@ -590,34 +632,35 @@ async function validateKey() {
     setKeyStatus(t("logApiKeyFirst"), "warn");
     return;
   }
+  if (isCustom() && !ui.customEndpointInput.value.trim()) {
+    setKeyStatus(t("customNoEndpoint"), "warn");
+    return;
+  }
 
   ui.btnLoadModels.disabled = true;
   setKeyStatus(t("keyValidating"), "loading");
 
   // Reset dropdown while loading
-  if (!isAzure()) {
-    setModelStatus(t("loadingModels"), "loading");
-    ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
-  }
+  setModelStatus(t("loadingModels"), "loading");
+  ui.modelSelect.innerHTML = `<option value="">${t("loadingModels")}</option>`;
 
   try {
     const resp = await fetch("/api/validate_key", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
-        api_key:        apiKey,
-        provider:       ui.providerSelect.value,
-        azure_endpoint: isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+        api_key:         apiKey,
+        provider:        ui.providerSelect.value,
+        custom_endpoint: customEndpoint(),
+        custom_format:   customFormat(),
       }),
     });
     const data = await resp.json();
 
     if (!data.valid) {
       setKeyStatus(t("keyInvalid"), "invalid");
-      if (!isAzure()) {
-        setModelStatus(t("errorLoading"), "error");
-        ui.modelSelect.innerHTML = `<option value="">${t("noModels")}</option>`;
-      }
+      setModelStatus(t("errorLoading"), "error");
+      ui.modelSelect.innerHTML = `<option value="">${t("noModels")}</option>`;
       return;
     }
 
@@ -634,16 +677,18 @@ async function validateKey() {
       opt.textContent = m.display_name || m.id;
       ui.modelSelect.appendChild(opt);
     });
-    if (!isAzure()) {
+    if (models.length) {
       setModelStatus(`${models.length} ${t("modelsAvailable")}`, "success");
       log(`${t("logModelsLoaded")} ${models.length}`, "success");
+    } else {
+      // An endpoint that does not publish its models: the manual field is the
+      // way in, and it is already visible in custom mode.
+      setModelStatus(t("noModels"), "warn");
     }
   } catch (err) {
     setKeyStatus(t("logConnectError"), "error");
-    if (!isAzure()) {
-      setModelStatus(t("errorLoading"), "error");
-      ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;
-    }
+    setModelStatus(t("errorLoading"), "error");
+    ui.modelSelect.innerHTML = `<option value="">${t("errorLoading")}</option>`;
   } finally {
     ui.btnLoadModels.disabled = false;
   }
@@ -1218,8 +1263,8 @@ async function generate() {
 
   try {
     const apiKeyOverride   = ui.apiKeyInput.value.trim() || null;
-    const modelOverride    = isAzure()
-      ? (ui.modelSelect.value.trim() || ui.azureDeploymentInput.value.trim() || null)
+    const modelOverride    = isCustom()
+      ? (ui.modelSelect.value.trim() || ui.customModelInput.value.trim() || null)
       : (ui.modelSelect.value.trim() || null);
     const providerOverride = apiKeyOverride ? ui.providerSelect.value : null;
 
@@ -1238,7 +1283,8 @@ async function generate() {
         api_key_override:         apiKeyOverride,
         model_override:           modelOverride,
         provider_override:        providerOverride,
-        azure_endpoint_override:  isAzure() ? ui.azureEndpointInput.value.trim() : undefined,
+        custom_endpoint_override: customEndpoint(),
+        custom_format_override:   customFormat(),
         lang:                     _lang,
         output_lang:              ui.outputLangSelect.value || _lang,
       }),

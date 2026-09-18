@@ -42,9 +42,23 @@ El documento resultante incluye:
 | **Google AI** | Gemini 2.5 Pro, Gemini 2.0 Flash |
 | **Anthropic** | Claude Opus 4, Claude Sonnet 4 |
 | **OpenAI** | GPT-4o, o3 |
-| **Azure AI** | Cualquier modelo desplegado en Azure AI Foundry |
+| **Custom** | Cualquier modelo servido desde un endpoint propio |
 
-La detección del proveedor es automática para claves con prefijos conocidos (`sk-ant-` → Anthropic, `sk-` → OpenAI). Para Google AI y Azure se selecciona el proveedor manualmente desde la interfaz.
+La detección del proveedor es automática para claves con prefijos conocidos (`sk-ant-` → Anthropic, `sk-` → OpenAI). Para Google AI y Custom se selecciona el proveedor manualmente desde la interfaz.
+
+### Proveedor Custom
+
+Al elegir **Custom** aparecen dos campos: el **endpoint** donde están desplegados los modelos y la **API-key** de ese servidor. No está atado a ningún fabricante: lo que importa es el formato de API que habla el endpoint, no de quién es el modelo que sirve.
+
+| Formato | Cubre |
+|---|---|
+| **OpenAI compatible** (por defecto) | Azure AI Foundry, Azure OpenAI, DeepSeek, Moonshot (Kimi), Qwen, Mistral, Groq, Together, OpenRouter, vLLM, Ollama, LM Studio, gateways corporativos |
+| **Anthropic** | Proxies y gateways que hablan la Messages API |
+| **Google Gemini** | Proxies que hablan `generateContent` |
+
+El formato se detecta solo a partir del endpoint; el desplegable permite forzarlo cuando la URL no lo delata. Al pulsar **Cargar API-key** GenDoc pide al endpoint su lista de modelos: si el servidor no la publica, el campo **Modelo** permite escribir el nombre a mano.
+
+El endpoint también puede fijarse por defecto con la variable `LLM_ENDPOINT` en el `.env` (`AZURE_AI_ENDPOINT` sigue funcionando como alias).
 
 ---
 
@@ -192,7 +206,7 @@ Desde la interfaz es posible configurar:
 GenDoc/
 ├── app/
 │   ├── generators/        # Lógica de generación por tipo de documento
-│   ├── ai_service.py      # Integración multi-proveedor (Google, Anthropic, OpenAI, Azure)
+│   ├── ai_service.py      # Integración multi-proveedor (Google, Anthropic, OpenAI, Custom)
 │   ├── md_to_docx.py      # Conversión de Markdown a Word
 │   ├── repo_reader.py     # Escaneo del repositorio
 │   ├── routes.py          # Endpoints Flask

@@ -79,18 +79,34 @@ def api_default_sections():
     return jsonify({"sections": sections})
 
 
+def _custom_endpoint_args(body: dict) -> tuple[str | None, str | None]:
+    """
+    Read the custom-endpoint settings from a request body.
+
+    "azure_endpoint" is the former name of "custom_endpoint" and is still
+    accepted so older clients keep working.
+    """
+    endpoint = (
+        (body.get("custom_endpoint") or "").strip()
+        or (body.get("azure_endpoint") or "").strip()
+        or None
+    )
+    fmt = (body.get("custom_format") or "").strip().lower() or None
+    return endpoint, fmt
+
+
 @main.route("/api/models", methods=["POST"])
 def api_list_models():
     body           = request.get_json(silent=True) or {}
-    api_key        = (body.get("api_key")        or "").strip()
-    provider       = (body.get("provider")       or "").strip() or None
-    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
+    api_key        = (body.get("api_key")  or "").strip()
+    provider       = (body.get("provider") or "").strip() or None
+    endpoint, fmt  = _custom_endpoint_args(body)
 
     if not api_key:
         return jsonify({"error": "No se proporcionó API key."}), 400
 
     try:
-        models = ai_service.list_models(api_key, provider, azure_endpoint)
+        models = ai_service.list_models(api_key, provider, endpoint, fmt)
         return jsonify({"models": models, "provider": provider or ai_service.detect_provider(api_key)})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 401
@@ -101,15 +117,15 @@ def api_list_models():
 @main.route("/api/validate_key", methods=["POST"])
 def api_validate_key():
     body           = request.get_json(silent=True) or {}
-    api_key        = (body.get("api_key")        or "").strip()
-    provider       = (body.get("provider")       or "").strip() or None
-    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
+    api_key        = (body.get("api_key")  or "").strip()
+    provider       = (body.get("provider") or "").strip() or None
+    endpoint, fmt  = _custom_endpoint_args(body)
 
     if not api_key:
         return jsonify({"valid": False, "error": "No se proporcionó API key."}), 400
 
     try:
-        models = ai_service.validate_key(api_key, provider, azure_endpoint)
+        models = ai_service.validate_key(api_key, provider, endpoint, fmt)
         return jsonify({"valid": True, "models": models})
     except ValueError as exc:
         return jsonify({"valid": False, "error": str(exc)})
@@ -120,16 +136,16 @@ def api_validate_key():
 @main.route("/api/test_model", methods=["POST"])
 def api_test_model():
     body           = request.get_json(silent=True) or {}
-    api_key        = (body.get("api_key")        or "").strip()
-    provider       = (body.get("provider")       or "").strip()
-    model          = (body.get("model")          or "").strip()
-    azure_endpoint = (body.get("azure_endpoint") or "").strip() or None
+    api_key        = (body.get("api_key")  or "").strip()
+    provider       = (body.get("provider") or "").strip()
+    model          = (body.get("model")    or "").strip()
+    endpoint, fmt  = _custom_endpoint_args(body)
 
     if not api_key or not model:
         return jsonify({"available": False, "error": "Falta API key o nombre de modelo."}), 400
 
     try:
-        ai_service.test_model(api_key, provider, model, azure_endpoint)
+        ai_service.test_model(api_key, provider, model, endpoint, fmt)
         return jsonify({"available": True})
     except (ValueError, RuntimeError) as exc:
         return jsonify({"available": False, "error": str(exc)})
@@ -151,7 +167,12 @@ def api_generate():
     api_key_override        = (body.get("api_key_override")        or "").strip() or None
     model_override          = (body.get("model_override")          or "").strip() or None
     provider_override       = (body.get("provider_override")       or "").strip() or None
-    azure_endpoint_override = (body.get("azure_endpoint_override") or "").strip() or None
+    custom_endpoint_override = (
+        (body.get("custom_endpoint_override") or "").strip()
+        or (body.get("azure_endpoint_override") or "").strip()   # legacy name
+        or None
+    )
+    custom_format_override  = (body.get("custom_format_override") or "").strip().lower() or None
     lang                = (body.get("lang")              or "es").strip()
     if lang not in ("es", "en"):
         lang = "es"
@@ -176,8 +197,8 @@ def api_generate():
                                                     primary_color, secondary_color,
                                                     locked_sections, section_enrichments,
                                                     api_key_override, model_override,
-                                                    provider_override, azure_endpoint_override,
-                                                    lang, output_lang,
+                                                    provider_override, custom_endpoint_override,
+                                                    custom_format_override, lang, output_lang,
                                                     sections_override=sections_override):
             # When the document is ready, mint a download token and include it
             # in the event so the browser never receives the raw filesystem path.
