@@ -133,7 +133,7 @@ Se abrirá automáticamente el navegador en `http://localhost:5000`.
 3. *(Opcional)* Selecciona una **plantilla `.docx`** si quieres editar un documento existente en lugar de generar uno desde cero. Las secciones detectadas en la plantilla reemplazarán a las recomendadas en el panel.
 4. **Gestiona las secciones** desde el panel:
    - Marca o desmarca la columna **Texto** para indicar qué secciones debe redactar el LLM (las desmarcadas se copian tal cual desde la plantilla).
-   - Activa **Tablas** o **Diagramas** por sección para incluir esos elementos en el contenido generado.
+   - Activa **Tablas** o **Diagramas** por sección para incluir esos elementos en el contenido generado. Las casillas que aparecen marcadas de inicio (con un punto junto a la casilla) son las que la IA sugiere para esa sección; desmarcarlas prohíbe ese elemento allí.
    - Añade secciones nuevas con el botón **"+ Incorporar sección"**.
    - Edita el nombre de una sección con el ícono ✎, elimínala con ✕, o reordénalas arrastrándolas con el mouse (selección múltiple manteniendo el clic y luego arrastrando).
    - Deshaz cualquier cambio estructural con el botón **↺** ubicado en el encabezado del panel.
@@ -158,12 +158,24 @@ El panel de secciones es la pieza central del flujo de edición. Aparece automá
 | Acción | Descripción |
 |--------|-------------|
 | Columna **Texto** | Controla si el LLM redacta esa sección. Si está desmarcada, se copia literalmente desde la plantilla. |
-| Columna **Tablas** | Solicita al LLM que incluya al menos una tabla en esa sección. |
-| Columna **Diagramas** | Solicita al LLM que incluya un diagrama Mermaid en esa sección. |
+| Columna **Tablas** | Solicita al LLM que incluya al menos una tabla en esa sección. Si está desmarcada, el LLM tiene **prohibido** usar tablas ahí. |
+| Columna **Diagramas** | Solicita al LLM que incluya un diagrama Mermaid en esa sección. Si está desmarcada, el LLM tiene **prohibido** usar diagramas ahí. |
 | ✎ Editar nombre | Permite renombrar la sección con un input inline. Confirmar con Enter o ✓, cancelar con Escape o ✕. |
 | ✕ Eliminar | Elimina la sección del panel. |
 | Arrastrar | Reordena las secciones arrastrando cualquier fila. Para mover varias a la vez, haz clic en cada una para seleccionarlas (se resaltan en azul) y luego arrastra cualquiera del grupo. |
 | **↺ Deshacer** | Revierte el último cambio estructural (agregar, eliminar, renombrar o reordenar secciones). |
+
+### Sugerencias de la IA
+
+Cada tipo de documento declara qué secciones se benefician de una tabla o un diagrama
+(por ejemplo, *Variables de entorno* → tabla, *Arquitectura general del sistema* → diagrama).
+Esas casillas aparecen **marcadas de inicio** y se señalan con un punto, de modo que el
+usuario vea la sugerencia antes de generar en lugar de descubrirla en el `.docx`.
+
+Las casillas son **vinculantes en ambos sentidos**: el prompt instruye al LLM a incluir
+los elementos marcados y le prohíbe explícitamente usar tablas o diagramas en cualquier
+sección donde la casilla esté desmarcada. Esta prohibición tiene prioridad sobre el
+resto de instrucciones del prompt.
 
 ---
 

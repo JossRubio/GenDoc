@@ -106,6 +106,20 @@ class BaseGenerator:
     # Use this for type-specific technical instructions (e.g. diagram syntax).
     EXTRA_INSTRUCTIONS: str = ""
 
+    # Sections that benefit from a table or a diagram, as {section: [types]}.
+    # The UI pre-checks these boxes so the user sees what the model would add
+    # on its own, and can veto it. Subclasses declare their own maps; the _EN
+    # variant is keyed by the English section titles.
+    RECOMMENDED_ENRICHMENTS:    dict[str, list[str]] = {}
+    RECOMMENDED_ENRICHMENTS_EN: dict[str, list[str]] = {}
+
+    @classmethod
+    def recommended_enrichments(cls, lang: str = "es") -> dict[str, list[str]]:
+        """Recommendation map for *lang*, falling back to the Spanish one."""
+        if lang == "en":
+            return cls.RECOMMENDED_ENRICHMENTS_EN or cls.RECOMMENDED_ENRICHMENTS
+        return cls.RECOMMENDED_ENRICHMENTS
+
     # ── Prompt building ───────────────────────────────────────────────
 
     def build_prompt(
@@ -131,8 +145,10 @@ class BaseGenerator:
         section_enrichments  : dict[str, list[str]] | None
             Maps section title → list of enrichment types requested.
             Supported values: ``"table"``, ``"diagram"``.
-            When provided, the LLM is instructed to include those elements
-            in the corresponding sections.
+            The map is exhaustive: listed sections get the element, and every
+            other section is explicitly forbidden from using tables or
+            diagrams. An empty dict forbids them document-wide; ``None``
+            disables the restriction entirely (no panel state available).
 
         Override this method in a subclass only when the default
         structure is not appropriate for that document type.
@@ -247,6 +263,57 @@ class BaseGenerator:
                         + "\n".join(lines) + "\n\n"
                     )
 
+        # The checkboxes are exhaustive: whatever was not ticked is forbidden.
+        # Only enforced when the caller passed a dict (even an empty one) —
+        # None means "no panel state available", i.e. leave it to the model.
+        restriction_block = ""
+        if section_enrichments is not None:
+            header_en = (
+                "## Elements you must NOT add\n\n"
+                "This rule overrides every other instruction in this prompt.\n\n"
+            )
+            header_es = (
+                "## Elementos que NO debes añadir\n\n"
+                "Esta regla tiene prioridad sobre cualquier otra instrucción de "
+                "este prompt.\n\n"
+            )
+            if enrichment_block:
+                restriction_block = (
+                    header_en +
+                    "- Markdown tables and [DIAGRAM] diagrams may appear ONLY in the "
+                    'sections listed under "Elements to include per section", and only '
+                    "the element requested there.\n"
+                    "- In every other section they are FORBIDDEN: present that "
+                    "information as prose or `-` lists instead.\n"
+                    "- If an earlier instruction asks for a table or a diagram in a "
+                    "section that is not listed there, ignore that instruction.\n\n"
+                ) if lang == "en" else (
+                    header_es +
+                    "- Las tablas Markdown y los diagramas [DIAGRAM] solo pueden "
+                    'aparecer en las secciones indicadas en "Elementos a incluir por '
+                    'sección", y solo el elemento solicitado allí.\n'
+                    "- En el resto de las secciones están PROHIBIDOS: presenta esa "
+                    "información como prosa o listas con `-`.\n"
+                    "- Si una instrucción anterior pide una tabla o un diagrama para una "
+                    "sección que no está listada allí, ignórala.\n\n"
+                )
+            else:
+                restriction_block = (
+                    header_en +
+                    "- Do NOT use Markdown tables or [DIAGRAM] diagrams in ANY section "
+                    "of this document.\n"
+                    "- Present all information as prose or `-` lists.\n"
+                    "- If an earlier instruction asks for a table or a diagram, "
+                    "ignore that instruction.\n\n"
+                ) if lang == "en" else (
+                    header_es +
+                    "- NO uses tablas Markdown ni diagramas [DIAGRAM] en NINGUNA "
+                    "sección de este documento.\n"
+                    "- Presenta toda la información como prosa o listas con `-`.\n"
+                    "- Si una instrucción anterior pide una tabla o un diagrama, "
+                    "ignórala.\n\n"
+                )
+
         if lang == "en":
             general_rules = (
                 "## General instructions\n\n"
@@ -291,6 +358,7 @@ class BaseGenerator:
             f"{enrichment_block}"
             f"{general_rules}"
             f"{extra_block}"
+            f"{restriction_block}"
             f"---\n\n{repo_context}"
         )
 

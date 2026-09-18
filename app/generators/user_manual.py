@@ -73,6 +73,22 @@ Reglas estrictas para los bloques de diagrama:
 - Los nodos deben reflejar ACCIONES del usuario o PANTALLAS/ESTADOS que ve,
   no componentes internos del sistema."""
 
+    RECOMMENDED_ENRICHMENTS = {
+        "Requisitos previos":                ["table"],
+        "Descripción de funcionalidades":     ["table"],
+        "Diagramas de flujo de uso":         ["diagram"],
+        "Solución de problemas comunes":      ["table"],
+        "Glosario":                          ["table"],
+    }
+
+    RECOMMENDED_ENRICHMENTS_EN = {
+        "Prerequisites":                     ["table"],
+        "Feature descriptions":              ["table"],
+        "Usage flow diagrams":               ["diagram"],
+        "Troubleshooting":                   ["table"],
+        "Glossary":                          ["table"],
+    }
+
     SECTIONS = [
         "Introducción y propósito de la herramienta",
         "Requisitos previos",

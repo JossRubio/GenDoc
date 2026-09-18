@@ -53,6 +53,10 @@ def api_browse_file():
 def api_template_sections():
     body          = request.get_json(silent=True) or {}
     template_path = (body.get("template_path") or "").strip()
+    doc_type      = (body.get("doc_type") or "technical").strip()
+    lang          = (body.get("lang")     or "es").strip()
+    if lang not in ("es", "en"):
+        lang = "es"
 
     if not template_path:
         return jsonify({"sections": [], "error": "No se proporcionó ruta de plantilla."}), 400
@@ -61,7 +65,15 @@ def api_template_sections():
     if error:
         return jsonify({"sections": [], "error": error}), 200  # non-fatal; caller shows warning
 
-    return jsonify({"sections": sections})
+    # A template carries its own section names; recommend only where one of
+    # them matches a known section of this document type.
+    try:
+        known = get_generator(doc_type).recommended_enrichments(lang)
+    except ValueError:
+        known = {}
+    recommended = {s: known[s] for s in sections if s in known}
+
+    return jsonify({"sections": sections, "recommended": recommended})
 
 
 @main.route("/api/default_sections", methods=["POST"])
@@ -76,7 +88,10 @@ def api_default_sections():
     except ValueError:
         return jsonify({"sections": []}), 400
     sections = getattr(gen, f"SECTIONS_{lang.upper()}", None) or gen.SECTIONS
-    return jsonify({"sections": sections})
+    return jsonify({
+        "sections":    sections,
+        "recommended": gen.recommended_enrichments(lang),
+    })
 
 
 def _custom_endpoint_args(body: dict) -> tuple[str | None, str | None]:

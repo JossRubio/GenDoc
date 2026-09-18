@@ -88,8 +88,8 @@ const TRANSLATIONS = {
     sectionsRecommended: "Secciones recomendadas",
     selectAll:         "Seleccionar todo",
     deselectAll:       "Deseleccionar todo",
-    sectionsHint:      "Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM (las no marcadas se copian exactamente desde la plantilla). Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para solicitar esos elementos en cada sección.",
-    sectionsHintDefault: "Las secciones mostradas son las predeterminadas para este tipo de documento. Usa <strong>Tablas</strong> y <strong>Diagramas</strong> para incluir esos elementos en cada sección generada.",
+    sectionsHint:      "Usa la columna <strong>Texto</strong> para indicar qué secciones debe editar el LLM (las no marcadas se copian exactamente desde la plantilla). Las casillas <strong>Tablas</strong> y <strong>Diagramas</strong> marcadas de inicio son las que la IA sugiere para esa sección: si las desmarcas, esa sección <strong>no</strong> podrá incluirlas.",
+    sectionsHintDefault: "Las secciones mostradas son las predeterminadas para este tipo de documento. Las casillas <strong>Tablas</strong> y <strong>Diagramas</strong> marcadas de inicio son las que la IA sugiere para esa sección: si las desmarcas, esa sección <strong>no</strong> podrá incluirlas.",
     colSection:        "Sección detectada",
     colSectionDefault: "Sección recomendada",
     addSection:        "+ Incorporar sección",
@@ -100,6 +100,10 @@ const TRANSLATIONS = {
     colText:           "Texto",
     colTables:         "Tablas",
     colDiagrams:       "Diagramas",
+    recommendedTable:   "Sugerido por la IA para esta sección. Desmárcalo para prohibir tablas aquí.",
+    recommendedDiagram: "Sugerido por la IA para esta sección. Desmárcalo para prohibir diagramas aquí.",
+    enrichTable:        "Incluir tabla en esta sección",
+    enrichDiagram:      "Incluir diagrama en esta sección",
     docType:           "Tipo de documento",
     docTypeTechnical:  "Documentación técnica",
     docTypeUserManual: "Manual de Usuario",
@@ -195,8 +199,8 @@ const TRANSLATIONS = {
     sectionsRecommended: "Recommended sections",
     selectAll:         "Select all",
     deselectAll:       "Deselect all",
-    sectionsHint:      "Use the <strong>Text</strong> column to indicate which sections the LLM should edit (unmarked ones are copied exactly from the template). Use <strong>Tables</strong> and <strong>Diagrams</strong> to request those elements per section.",
-    sectionsHintDefault: "The sections shown are the defaults for this document type. Use <strong>Tables</strong> and <strong>Diagrams</strong> to include those elements in each generated section.",
+    sectionsHint:      "Use the <strong>Text</strong> column to indicate which sections the LLM should edit (unmarked ones are copied exactly from the template). The <strong>Tables</strong> and <strong>Diagrams</strong> boxes ticked by default are the ones the AI suggests for that section: unticking one means that section <strong>cannot</strong> include it.",
+    sectionsHintDefault: "The sections shown are the defaults for this document type. The <strong>Tables</strong> and <strong>Diagrams</strong> boxes ticked by default are the ones the AI suggests for that section: unticking one means that section <strong>cannot</strong> include it.",
     colSection:        "Detected section",
     colSectionDefault: "Recommended section",
     addSection:        "+ Add section",
@@ -207,6 +211,10 @@ const TRANSLATIONS = {
     colText:           "Text",
     colTables:         "Tables",
     colDiagrams:       "Diagrams",
+    recommendedTable:   "Suggested by the AI for this section. Untick to forbid tables here.",
+    recommendedDiagram: "Suggested by the AI for this section. Untick to forbid diagrams here.",
+    enrichTable:        "Include a table in this section",
+    enrichDiagram:      "Include a diagram in this section",
     docType:           "Document Type",
     docTypeTechnical:  "Technical Documentation",
     docTypeUserManual: "User Manual",
@@ -375,6 +383,9 @@ let _progressCurrent = 0;
 let _progressTicker  = null;
 // "default" = repo set, no template; "template" = template loaded; null = panel hidden
 let _sectionsMode    = null;
+// Enrichments the model suggests per section, kept so rebuilt rows
+// (undo) keep their recommendation mark.
+let _sectionsRecommended = {};
 // Undo history: stack of section-state snapshots (each = array of {title,editChecked,...})
 const _sectionsHistory = [];
 
@@ -796,7 +807,7 @@ function undoSectionsChange() {
   const state = _sectionsHistory.pop();
   ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
   state.forEach((item, idx) => {
-    const row = createSectionRow(item.title, idx);
+    const row = createSectionRow(item.title, idx, _sectionsRecommended[item.title] || []);
     row.style.animationDelay = "0s";
     ui.sectionsList.appendChild(row);
     const editCb  = row.querySelector(".gd-section-cb[data-role='edit']");
@@ -811,6 +822,7 @@ function undoSectionsChange() {
 
 function clearSectionsPanel() {
   _sectionsHistory.length = 0;
+  _sectionsRecommended = {};
   updateUndoBtn();
   ui.sectionsList.querySelectorAll(".gd-section-item, .gd-section-add-row").forEach(el => el.remove());
   closePanel(ui.sectionsPanelWrap);
@@ -871,8 +883,13 @@ function startEditSectionRow(row) {
   });
 }
 
-/** Build a single section row element. idx is used for unique IDs + stagger delay. */
-function createSectionRow(title, idx) {
+/**
+ * Build a single section row element. idx is used for unique IDs + stagger delay.
+ * `recommended` lists the enrichments the model would add on its own
+ * ("table" / "diagram"); those boxes start ticked and are flagged in the UI so
+ * the user can see the suggestion and veto it.
+ */
+function createSectionRow(title, idx, recommended = []) {
   const row = document.createElement("div");
   row.className = "gd-section-item";
 
@@ -930,16 +947,18 @@ function createSectionRow(title, idx) {
   const tableCb = document.createElement("input");
   tableCb.type            = "checkbox";
   tableCb.id              = tableId;
-  tableCb.checked         = false;
+  const tableRec = recommended.includes("table");
+  tableCb.checked         = tableRec;
   tableCb.className       = "gd-section-enrich-cb";
   tableCb.dataset.section = title;
   tableCb.dataset.role    = "table";
+  if (tableRec) tableCb.dataset.recommended = "1";
 
   const tableCell = document.createElement("div");
-  tableCell.className = "gd-enrich-cell";
+  tableCell.className = "gd-enrich-cell" + (tableRec ? " is-recommended" : "");
   const tableLabel = document.createElement("label");
   tableLabel.htmlFor = tableId;
-  tableLabel.title   = "Incluir tabla en esta sección";
+  tableLabel.title   = tableRec ? t("recommendedTable") : t("enrichTable");
   tableCell.appendChild(tableCb);
   tableCell.appendChild(tableLabel);
 
@@ -948,16 +967,18 @@ function createSectionRow(title, idx) {
   const diagCb = document.createElement("input");
   diagCb.type            = "checkbox";
   diagCb.id              = diagId;
-  diagCb.checked         = false;
+  const diagRec = recommended.includes("diagram");
+  diagCb.checked         = diagRec;
   diagCb.className       = "gd-section-enrich-cb";
   diagCb.dataset.section = title;
   diagCb.dataset.role    = "diagram";
+  if (diagRec) diagCb.dataset.recommended = "1";
 
   const diagCell = document.createElement("div");
-  diagCell.className = "gd-enrich-cell";
+  diagCell.className = "gd-enrich-cell" + (diagRec ? " is-recommended" : "");
   const diagLabel = document.createElement("label");
   diagLabel.htmlFor = diagId;
-  diagLabel.title   = "Incluir diagrama en esta sección";
+  diagLabel.title   = diagRec ? t("recommendedDiagram") : t("enrichDiagram");
   diagCell.appendChild(diagCb);
   diagCell.appendChild(diagLabel);
 
@@ -975,8 +996,9 @@ function createSectionRow(title, idx) {
   return row;
 }
 
-function renderSectionsPanel(sections, mode = "template") {
+function renderSectionsPanel(sections, mode = "template", recommended = {}) {
   _sectionsMode = mode;
+  _sectionsRecommended = recommended || {};
   _sectionsHistory.length = 0;
   updateUndoBtn();
   updateSectionsPanelLabels(mode);
@@ -988,7 +1010,7 @@ function renderSectionsPanel(sections, mode = "template") {
   }
 
   sections.forEach((title, idx) => {
-    ui.sectionsList.appendChild(createSectionRow(title, idx));
+    ui.sectionsList.appendChild(createSectionRow(title, idx, recommended[title] || []));
   });
 
   openPanel(ui.sectionsPanelWrap);
@@ -1091,15 +1113,24 @@ function getLockedSections() {
 /**
  * Returns a dict { sectionTitle: ["table","diagram"] } for sections where
  * at least one enrichment (table / diagram) is checked.
+ *
+ * The result is exhaustive: the backend forbids tables and diagrams in every
+ * section not listed here. An empty object therefore means "none anywhere",
+ * which is different from null — null means the panel has no rows, so there is
+ * no user decision to enforce.
  */
 function getSectionEnrichments() {
+  const boxes = ui.sectionsList.querySelectorAll(".gd-section-enrich-cb");
+  if (boxes.length === 0) return null;
+
   const result = {};
-  ui.sectionsList.querySelectorAll(".gd-section-enrich-cb:checked").forEach(cb => {
+  boxes.forEach(cb => {
+    if (!cb.checked) return;
     const sec = cb.dataset.section;
     if (!result[sec]) result[sec] = [];
     result[sec].push(cb.dataset.role);   // "table" or "diagram"
   });
-  return Object.keys(result).length > 0 ? result : null;
+  return result;
 }
 
 async function loadTemplateSections(templatePath) {
@@ -1110,7 +1141,11 @@ async function loadTemplateSections(templatePath) {
     const resp = await fetch("/api/template/sections", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ template_path: templatePath }),
+      body:    JSON.stringify({
+        template_path: templatePath,
+        doc_type:      selectedDocType(),
+        lang:          ui.outputLangSelect.value || _lang,
+      }),
     });
     const data = await resp.json();
 
@@ -1120,7 +1155,7 @@ async function loadTemplateSections(templatePath) {
     }
 
     if (data.sections && data.sections.length > 0) {
-      renderSectionsPanel(data.sections, "template");
+      renderSectionsPanel(data.sections, "template", data.recommended || {});
       log(`${t("logSections")} ${data.sections.length}`);
     } else {
       log(t("logNoSections"), "warn");
@@ -1145,7 +1180,7 @@ async function loadDefaultSections() {
     });
     const data = await resp.json();
     if (data.sections && data.sections.length > 0) {
-      renderSectionsPanel(data.sections, "default");
+      renderSectionsPanel(data.sections, "default", data.recommended || {});
     }
   } catch {
     // silently ignore — not critical

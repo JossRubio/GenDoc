@@ -75,6 +75,24 @@ Reglas estrictas para los bloques de diagrama:
 - Los nodos deben representar CONCEPTOS DE NEGOCIO, FASES o RESULTADOS,
   no módulos de software ni nombres de clases."""
 
+    RECOMMENDED_ENRICHMENTS = {
+        "Funcionalidades principales":       ["table"],
+        "Beneficios y valor agregado":       ["table"],
+        "Arquitectura (vista de alto nivel)": ["diagram"],
+        "Diagramas":                         ["diagram"],
+        "Stack tecnológico":                 ["table"],
+        "Estado actual y roadmap":           ["table"],
+    }
+
+    RECOMMENDED_ENRICHMENTS_EN = {
+        "Main features":                     ["table"],
+        "Benefits and added value":          ["table"],
+        "Architecture (high-level view)":    ["diagram"],
+        "Diagrams":                          ["diagram"],
+        "Technology stack":                  ["table"],
+        "Current status and roadmap":        ["table"],
+    }
+
     SECTIONS = [
         "Resumen ejecutivo",
         "Problema que resuelve",

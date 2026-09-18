@@ -936,6 +936,21 @@ body {
   cursor: not-allowed;
 }
 
+/* Enrichment suggested by the model: ticked on load and flagged with a dot so
+   a suggestion is distinguishable from a choice the user made. */
+.gd-enrich-cell.is-recommended::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: calc(50% - 14px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gd-primary);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
 [data-theme="dark"] .gd-sections-panel {
   background: var(--gd-log-bg);
   border-color: var(--gd-log-border);

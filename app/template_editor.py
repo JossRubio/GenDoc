@@ -140,8 +140,10 @@ def build_combined_edit_prompt(
     _join = " and " if lang == "en" else " y "
 
     section_lines: list[str] = []
+    any_enrichment = False
     for sec in sections_to_edit:
         enrichments = (section_enrichments or {}).get(sec, [])
+        any_enrichment = any_enrichment or bool(enrichments)
         enrich_note = ""
         if enrichments:
             what = _join.join(_elabels[t] for t in enrichments if t in _elabels)
@@ -155,6 +157,49 @@ def build_combined_edit_prompt(
             section_lines.append(f"  - **{sec}**: Redacta el contenido completo.{enrich_note}")
 
     sections_block = "\n".join(section_lines)
+
+    # The panel checkboxes are exhaustive: anything not ticked is banned.
+    # None means no panel state was supplied, so the restriction is skipped.
+    ban_block = ""
+    if section_enrichments is not None:
+        header = (
+            "## Elements you must NOT add\n\n"
+            "This rule overrides every other instruction in this prompt.\n\n"
+            if lang == "en" else
+            "## Elementos que NO debes añadir\n\n"
+            "Esta regla tiene prioridad sobre cualquier otra instrucción de "
+            "este prompt.\n\n"
+        )
+        if any_enrichment:
+            body = (
+                "- Markdown tables and [DIAGRAM] diagrams may appear ONLY in the "
+                "sections that explicitly requested them above, and only the element "
+                "requested there.\n"
+                "- In every other section they are FORBIDDEN: use prose or `-` lists.\n"
+                "- If an earlier instruction asks for a table or a diagram in a "
+                "section that did not request one, ignore that instruction.\n\n"
+                if lang == "en" else
+                "- Las tablas Markdown y los diagramas [DIAGRAM] solo pueden aparecer "
+                "en las secciones que los solicitaron explícitamente arriba, y solo el "
+                "elemento solicitado allí.\n"
+                "- En el resto están PROHIBIDOS: usa prosa o listas con `-`.\n"
+                "- Si una instrucción anterior pide una tabla o un diagrama para una "
+                "sección que no lo solicitó, ignórala.\n\n"
+            )
+        else:
+            body = (
+                "- Do NOT use Markdown tables or [DIAGRAM] diagrams in ANY of these "
+                "sections.\n"
+                "- Present all information as prose or `-` lists.\n"
+                "- If an earlier instruction asks for a table or a diagram, ignore "
+                "that instruction.\n\n"
+                if lang == "en" else
+                "- NO uses tablas Markdown ni diagramas [DIAGRAM] en NINGUNA de estas "
+                "secciones.\n"
+                "- Presenta toda la información como prosa o listas con `-`.\n"
+                "- Si una instrucción anterior pide una tabla o un diagrama, ignórala.\n\n"
+            )
+        ban_block = header + body
 
     if lang == "en":
         intro = (
@@ -231,6 +276,7 @@ def build_combined_edit_prompt(
         f"{task_block}"
         f"{out_block}"
         f"{extra_block}"
+        f"{ban_block}"
         f"---\n\n{repo_context}"
     )
 

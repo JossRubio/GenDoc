@@ -62,6 +62,29 @@ Reglas estrictas para los bloques de diagrama:
 - Basa los diagramas en el código real: módulos, rutas, clases o funciones que
   realmente existan en el repositorio."""
 
+    # Sections where a table or diagram genuinely adds information — these
+    # mirror what the model tends to produce on its own, so the user sees the
+    # suggestion in the panel instead of being surprised by it in the .docx.
+    RECOMMENDED_ENRICHMENTS = {
+        "Arquitectura general del sistema":     ["diagram"],
+        "Descripción de módulos y componentes":  ["table"],
+        "Flujo de datos / lógica principal":     ["diagram"],
+        "Dependencias y requisitos":            ["table"],
+        "Variables de entorno":                 ["table"],
+        "API / endpoints (si aplica)":          ["table"],
+        "Diagramas":                            ["diagram"],
+    }
+
+    RECOMMENDED_ENRICHMENTS_EN = {
+        "System architecture overview":         ["diagram"],
+        "Modules and components description":   ["table"],
+        "Data flow / main logic":               ["diagram"],
+        "Dependencies and requirements":        ["table"],
+        "Environment variables":                ["table"],
+        "API / endpoints (if applicable)":      ["table"],
+        "Diagrams":                             ["diagram"],
+    }
+
     SECTIONS = [
         "Resumen del proyecto",
         "Arquitectura general del sistema",
