@@ -1,6 +1,6 @@
 # GenDoc
 
-**GenDoc** es una herramienta web local que analiza un repositorio de código y genera automáticamente un documento de documentación en formato Word (`.docx`), usando un modelo de lenguaje (LLM) para redactar el contenido.
+**GenDoc** es una herramienta web local que analiza un repositorio de código y genera automáticamente un documento de documentación —Word (`.docx`), PDF o PowerPoint (`.pptx`)— usando un modelo de lenguaje (LLM) para redactar el contenido.
 
 > **Importante:** el documento generado siempre es un **borrador (draft)**. No debe considerarse documentación final sin antes haber sido revisado en detalle por una persona. Quien lo reciba deberá leerlo completo, corregir lo que sea necesario y aprobarlo si lo encuentra suficientemente bueno, o usarlo como punto de partida para trabajar sobre él.
 
@@ -10,8 +10,12 @@
 
 1. Escanea los archivos de código fuente de un repositorio local.
 2. Construye un prompt adaptado al tipo de documento solicitado y lo envía al LLM configurado.
-3. Genera el documento final en formato Word (`.docx`) con estilo profesional.
+3. Genera el documento final con estilo profesional.
 4. Permite descargar el archivo directamente desde la interfaz.
+
+El formato de salida lo determina la plantilla: sin plantilla, o con una en `.txt`/`.md`/`.docx`,
+el resultado es un `.docx`; con una plantilla `.pdf` el resultado es un PDF, y con una `.pptx`
+es una presentación de PowerPoint.
 
 Cuando se proporciona una **plantilla `.docx`**, GenDoc trabaja en modo de edición quirúrgica: en lugar de crear un documento desde cero, edita únicamente las secciones seleccionadas dentro del archivo original, preservando la portada, índice, estilos, márgenes y cualquier sección que el usuario haya bloqueado.
 
@@ -39,8 +43,8 @@ El documento resultante incluye:
 
 | Proveedor | Modelos de ejemplo |
 |-----------|--------------------|
-| **Google AI** | Gemini 2.5 Pro, Gemini 2.0 Flash |
-| **Anthropic** | Claude Opus 4, Claude Sonnet 4 |
+| **Google AI** | Gemini 3 Flash, Gemini 2.5 Flash |
+| **Anthropic** | Claude Sonnet 4.5, Claude Opus 4 |
 | **OpenAI** | GPT-4o, o3 |
 | **Custom** | Cualquier modelo servido desde un endpoint propio |
 
@@ -129,18 +133,18 @@ Se abrirá automáticamente el navegador en `http://localhost:5000`.
 1. **Configura el LLM**: selecciona el proveedor, ingresa tu API key y haz clic en **"Cargar API-key"** para validarla y elegir un modelo específico.
    - Al usar el ejecutable, este paso es **obligatorio**.
    - Al usar el código fuente con `.env` configurado, puede omitirse si ya hay una clave definida en el servidor.
-2. **Selecciona el repositorio** haciendo clic en **"Examinar"** junto al campo correspondiente. Al hacerlo, se desplegará automáticamente el panel de secciones con las secciones recomendadas para el tipo de documento seleccionado.
-3. *(Opcional)* Selecciona una **plantilla `.docx`** si quieres editar un documento existente en lugar de generar uno desde cero. Las secciones detectadas en la plantilla reemplazarán a las recomendadas en el panel.
-4. **Gestiona las secciones** desde el panel:
+2. **Selecciona el repositorio** haciendo clic en **"Examinar"** junto al campo correspondiente.
+3. *(Opcional)* Selecciona una **plantilla** si quieres partir de un documento existente en lugar de generar uno desde cero. Con una plantilla `.docx` se activa la edición quirúrgica; con `.pdf` o `.pptx` se determina el formato de salida. Las secciones detectadas en la plantilla reemplazarán a las recomendadas en el panel.
+4. Elige el **idioma del documento** (Español o Inglés) y el **tipo de documento**. Ambos campos están sobre el panel de secciones porque lo determinan: al cambiarlos, el panel se recarga con las secciones y las sugerencias que correspondan.
+5. **Gestiona las secciones** desde el panel, que se despliega automáticamente:
    - Marca o desmarca la columna **Texto** para indicar qué secciones debe redactar el LLM (las desmarcadas se copian tal cual desde la plantilla).
-   - Activa **Tablas** o **Diagramas** por sección para incluir esos elementos en el contenido generado. Las casillas que aparecen marcadas de inicio (con un punto junto a la casilla) son las que la IA sugiere para esa sección; desmarcarlas prohíbe ese elemento allí.
+   - Revisa las casillas **Tablas** y **Diagramas**. Las que llegan marcadas de inicio (señaladas con un punto) son las que la IA sugiere para esa sección; desmarcarlas prohíbe ese elemento allí.
    - Añade secciones nuevas con el botón **"+ Incorporar sección"**.
    - Edita el nombre de una sección con el ícono ✎, elimínala con ✕, o reordénalas arrastrándolas con el mouse (selección múltiple manteniendo el clic y luego arrastrando).
    - Deshaz cualquier cambio estructural con el botón **↺** ubicado en el encabezado del panel.
-5. Elige el **tipo de documento** y el **idioma de salida** (Español o Inglés).
-6. *(Opcional)* Ajusta los **colores** de la paleta para personalizar el aspecto del Word.
+6. *(Opcional)* Ajusta los **colores** de la paleta para personalizar el aspecto del documento.
 7. Haz clic en **"⚡ Generar Documentación"** y espera. El log mostrará el progreso en tiempo real.
-8. Una vez completado, haz clic en **"Descargar"** para obtener el archivo `.docx`.
+8. Una vez completado, haz clic en **"Descargar"** para obtener el archivo.
 
 ---
 
@@ -207,7 +211,7 @@ Desde la interfaz es posible configurar:
 ## Limitaciones conocidas
 
 - El documento generado **siempre requiere revisión humana** antes de ser distribuido o utilizado.
-- Los diagramas Mermaid se incluyen como bloques de código con sintaxis válida; su renderizado como imagen depende de la herramienta con la que se abra el `.docx`.
+- Los diagramas Mermaid se renderizan como imagen y se incrustan en el documento, pero esto requiere tener instalado el **Mermaid CLI** (`npm install -g @mermaid-js/mermaid-cli`), que a su vez necesita Node.js. Si `mmdc` no está disponible en el sistema, el diagrama se inserta como bloque de código etiquetado y el documento sigue siendo utilizable.
 - Los resultados del LLM varían según el modelo configurado y la calidad del código fuente analizado.
 
 ---
@@ -220,6 +224,8 @@ GenDoc/
 │   ├── generators/        # Lógica de generación por tipo de documento
 │   ├── ai_service.py      # Integración multi-proveedor (Google, Anthropic, OpenAI, Custom)
 │   ├── md_to_docx.py      # Conversión de Markdown a Word
+│   ├── md_to_pdf.py       # Conversión de Markdown a PDF
+│   ├── md_to_pptx.py      # Conversión de Markdown a PowerPoint
 │   ├── repo_reader.py     # Escaneo del repositorio
 │   ├── routes.py          # Endpoints Flask
 │   ├── services.py        # Capa de negocio y streaming SSE
