@@ -66,6 +66,69 @@ El endpoint también puede fijarse por defecto con la variable `LLM_ENDPOINT` en
 
 ---
 
+## Stack tecnológico
+
+GenDoc es una aplicación **Flask que corre en local**: no hay servidor remoto, base de datos
+ni build step de frontend. El repositorio que analizas y tu API key nunca salen de tu máquina,
+salvo el contenido del prompt que se envía al proveedor LLM que hayas configurado.
+
+### Backend
+
+| Componente | Tecnología | Rol |
+|------------|------------|-----|
+| Lenguaje | **Python 3.10+** | Toda la lógica de la aplicación |
+| Servidor web | **Flask 3** | Sirve la interfaz, expone los endpoints JSON y emite el progreso por streaming |
+| Progreso en vivo | **Server-Sent Events** | El log y la barra de progreso se alimentan de un stream `text/event-stream` |
+| Configuración | **python-dotenv** | Carga `LLM_API_KEY`, `LLM_ENDPOINT` y demás variables desde `.env` |
+| Diálogos de archivo | **tkinter** (librería estándar) | Selector nativo de carpeta de repositorio y de plantilla |
+
+### Integración con LLMs
+
+| Librería | Proveedor |
+|----------|-----------|
+| **google-genai** | Google AI (Gemini) |
+| **anthropic** | Anthropic (Claude) |
+| **openai** | OpenAI y cualquier endpoint que hable su formato, incluido el proveedor **Custom** |
+
+El proveedor Custom reutiliza estas tres librerías apuntándolas a un `base_url` propio, según
+el formato de API que hable el endpoint. Ver [Proveedor Custom](#proveedor-custom).
+
+### Generación de documentos
+
+| Librería | Rol |
+|----------|-----|
+| **python-docx** | Construcción del `.docx`: portada, índice, estilos, tablas e imágenes |
+| **python-pptx** | Generación de presentaciones `.pptx` y lectura de secciones de plantillas PowerPoint |
+| **docx2pdf** | Salida en PDF, convirtiendo el `.docx` intermedio |
+| **pypdf** | Lectura de secciones de plantillas PDF |
+| **Mermaid CLI** (`mmdc`) | Renderizado de diagramas Mermaid a PNG — externo y opcional |
+
+> **Dos dependencias externas al ecosistema Python:** la salida en **PDF** requiere
+> **Microsoft Word** instalado (docx2pdf lo automatiza vía COM, solo Windows), y los diagramas
+> como imagen requieren **Node.js** con `@mermaid-js/mermaid-cli`. Sin ellas, el resto de la
+> herramienta funciona con normalidad: la salida `.docx`/`.pptx` no se ve afectada y los
+> diagramas caen a bloque de código.
+
+### Frontend
+
+| Componente | Tecnología |
+|------------|------------|
+| Plantillas | **Jinja2**, servidas por Flask (una sola página) |
+| Estilos base | **Bootstrap 5.3.3** vía CDN, únicamente para layout y reset; el aspecto se define en `static/css/main.css` |
+| Lógica de interfaz | **JavaScript vanilla** — sin framework, sin bundler, sin paso de compilación |
+| Temas e idioma | Preferencias en `localStorage`; los textos se traducen desde un diccionario en `app.js` |
+
+### Empaquetado
+
+| Herramienta | Rol |
+|-------------|-----|
+| **PyInstaller** | Empaqueta la aplicación completa en `GenDoc.exe` |
+| **Pillow** | Genera el ícono del ejecutable (`build/create_icon.py`) |
+
+Ambas se instalan solo para construir el `.exe`; están comentadas en `requirements.txt`.
+
+---
+
 ## Cómo usarla
 
 ### Opción A — Ejecutable (recomendada)
